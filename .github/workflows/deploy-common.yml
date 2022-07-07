@@ -1,0 +1,76 @@
+name: terraform deploy common
+
+on:
+  workflow_call:
+    inputs:
+      AWS_DEFAULT_REGION:
+        required: false
+        type: string
+        default: eu-west-3
+      CLUSTER:
+        required: true
+        type: string
+    secrets:
+      AWS_ACCESS_KEY_ID_TF:
+        required: true
+      AWS_SECRET_ACCESS_KEY_TF:
+        required: true
+      GH_TF_SSH_KEY_JULIEN_LEDOUX:
+        required: true
+
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.CLUSTER }}
+  # cancel-in-progress: true
+
+env:
+  AWS_DEFAULT_REGION: ${{ inputs.AWS_DEFAULT_REGION }}
+  CLUSTER: ${{ inputs.CLUSTER }}
+
+jobs:
+  deploy-common:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ./.terraform
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_TF }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_TF }}
+          aws-region: ${{ env.AWS_DEFAULT_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.2.3
+
+      # Common part
+      - name: Terraform ECR (init / validate / apply)
+        env:
+          GIT_SSH_COMMAND: "echo '${{ secrets.GH_TF_SSH_KEY_JULIEN_LEDOUX }}' > id_rsa
+            && ssh-keyscan github.com > known_hosts
+            && chmod 600 id_rsa known_hosts
+            && ssh -i ./id_rsa -o UserKnownHostsFile=./known_hosts"
+        run: |
+          cd ./common/ecr
+          terraform init -upgrade
+          terraform validate -no-color
+          terraform apply -auto-approve
+
+      - name: Terraform config cluster '${{ env.CLUSTER }}' (init / validate / apply)
+        env:
+          GIT_SSH_COMMAND: "echo '${{ secrets.GH_TF_SSH_KEY_JULIEN_LEDOUX }}' > id_rsa
+            && ssh-keyscan github.com > known_hosts
+            && chmod 600 id_rsa known_hosts
+            && ssh -i ./id_rsa -o UserKnownHostsFile=./known_hosts"
+        run: |
+          cd ./common/config-cluster
+          terraform init -reconfigure -upgrade -backend-config=backend-${{ env.CLUSTER }}.conf
+          terraform validate -no-color
+          terraform apply -auto-approve -var-file terraform-${{ env.CLUSTER }}.tfvars

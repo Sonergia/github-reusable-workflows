@@ -1,0 +1,36 @@
+name: define github workflows and terraform vars
+
+on:
+  workflow_call:
+    inputs:
+      IMAGE_STATIC_TAG:
+        required: false
+        type: string
+    # Map the workflow outputs to job outputs
+    outputs:
+      CONCURRENCY_CODE:
+        description: "Concurrency code for github workflows (and potentially DNS prefix)"
+        value: ${{ jobs.define-vars.outputs.CONCURRENCY_CODE }}
+      CLUSTER:
+        description: "Cluster name to deploy onto (test, release, prod)"
+        value: ${{ jobs.define-cluster.outputs.CLUSTER }}
+
+env:
+  IMAGE_STATIC_TAG: ${{ inputs.IMAGE_STATIC_TAG }}
+
+jobs:
+  # Define concurrency code for workflows
+  define-vars:
+    runs-on: ubuntu-latest
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Define vars
+        id: set-vars
+        run: ./.github/scripts/define-vars.sh
+
+    outputs:
+      CONCURRENCY_CODE: ${{ steps.set-vars.outputs.CONCURRENCY_CODE }}
+      CLUSTER: ${{ steps.set-vars.outputs.CLUSTER }}

@@ -1,0 +1,111 @@
+name: terraform deploy service
+
+on:
+  workflow_call:
+    inputs:
+      AWS_DEFAULT_REGION:
+        required: false
+        type: string
+        default: eu-west-3
+      CLUSTER:
+        required: true
+        type: string
+      SERVICE:
+        required: true
+        type: string
+      IMAGE_SHA:
+        required: true
+        type: string
+      IMAGE_TAG:
+        required: true
+        type: string
+      FORCE_DEPLOYMENT:
+        required: false
+        type: boolean
+        default: false
+      DNS_PREFIX:
+        required: false
+        type: string
+        default: null
+    secrets:
+      AWS_ACCESS_KEY_ID_TF:
+        required: true
+      AWS_SECRET_ACCESS_KEY_TF:
+        required: true
+      GH_TF_SSH_KEY_JULIEN_LEDOUX:
+        required: true
+
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.CLUSTER }}
+  # cancel-in-progress: true
+
+env:
+  AWS_DEFAULT_REGION: ${{ inputs.AWS_DEFAULT_REGION }}
+  CLUSTER: ${{ inputs.CLUSTER }}
+  SERVICE: ${{ inputs.SERVICE }}
+  IMAGE_SHA: ${{ inputs.IMAGE_SHA }}
+  IMAGE_TAG: ${{ inputs.IMAGE_TAG }}
+  FORCE_DEPLOYMENT: ${{ inputs.FORCE_DEPLOYMENT }}
+
+jobs:
+  deploy-service:
+    runs-on: ubuntu-latest
+    # runs-on: self-hosted
+
+    defaults:
+      run:
+        working-directory: ./.terraform/services
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_TF }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_TF }}
+          aws-region: ${{ env.AWS_DEFAULT_REGION }}
+
+      # - uses: actions/setup-node@v2
+      #   with:
+      #     node-version: '14'
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.2.3
+          terraform_wrapper: false # Fix "/usr/bin/env: ‘node’: No such file or directory"
+
+      - name: Terraform init service '${{ env.SERVICE }}' on cluster '${{ env.CLUSTER }}' configuration
+        env:
+          GIT_SSH_COMMAND: "echo '${{ secrets.GH_TF_SSH_KEY_JULIEN_LEDOUX }}' > id_rsa
+            && ssh-keyscan github.com > known_hosts
+            && chmod 600 id_rsa known_hosts
+            && ssh -i ./id_rsa -o UserKnownHostsFile=./known_hosts"
+        run: |
+          cd ${{ env.SERVICE }}
+          terraform init -reconfigure -upgrade -backend-config=backend-${{ env.CLUSTER }}.conf
+
+      # - name: Terraform validate
+      #   run: |
+      #     cd ${{ env.SERVICE }}
+      #     terraform validate -no-color
+
+      # - name: Terraform apply service '${{ env.SERVICE }}' on cluster '${{ env.CLUSTER }}'
+      #   run: |
+      #     cd ${{ env.SERVICE }}
+
+      #     FORCE_DEPLOY_PARAM=''
+
+      #     if [ ${{ env.FORCE_DEPLOYMENT }} == 'true' ]; then
+      #       FORCE_DEPLOY_PARAM="-replace=module.${{ env.SERVICE }}-service.aws_ecs_task_definition.task"
+      #     fi
+
+      #     terraform apply \
+      #       -auto-approve \
+      #       -var-file terraform-${{ env.CLUSTER }}.tfvars \
+      #       -var "image_tag=${{ env.IMAGE_TAG }}" \
+      #       -var "dns_prefix=${{ env.DNS_PREFIX }}" \
+      #       -var "use_bastion_ssh_tunnel=false" \
+      #       ${FORCE_DEPLOY_PARAM}
