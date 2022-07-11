@@ -49,8 +49,7 @@ env:
 
 jobs:
   deploy-service:
-    runs-on: ubuntu-latest
-    # runs-on: self-hosted
+    runs-on: [self-hosted, "${{ inputs.CLUSTER }}"]
 
     defaults:
       run:
@@ -87,25 +86,28 @@ jobs:
           cd ${{ env.SERVICE }}
           terraform init -reconfigure -upgrade -backend-config=backend-${{ env.CLUSTER }}.conf
 
-      # - name: Terraform validate
-      #   run: |
-      #     cd ${{ env.SERVICE }}
-      #     terraform validate -no-color
+      - name: Terraform validate
+        run: |
+          cd ${{ env.SERVICE }}
+          terraform validate -no-color
 
-      # - name: Terraform apply service '${{ env.SERVICE }}' on cluster '${{ env.CLUSTER }}'
-      #   run: |
-      #     cd ${{ env.SERVICE }}
+      - name: Terraform apply service '${{ env.SERVICE }}' on cluster '${{ env.CLUSTER }}'
+        run: |
+          cd ${{ env.SERVICE }}
 
-      #     FORCE_DEPLOY_PARAM=''
+          EXTRA_PARAMS=
 
-      #     if [ ${{ env.FORCE_DEPLOYMENT }} == 'true' ]; then
-      #       FORCE_DEPLOY_PARAM="-replace=module.${{ env.SERVICE }}-service.aws_ecs_task_definition.task"
-      #     fi
+          if [ ${{ env.FORCE_DEPLOYMENT }} == "true" ]; then
+            EXTRA_PARAMS="${EXTRA_PARAMS} -replace=module.${{ env.SERVICE }}-service.aws_ecs_task_definition.task"
+          fi
 
-      #     terraform apply \
-      #       -auto-approve \
-      #       -var-file terraform-${{ env.CLUSTER }}.tfvars \
-      #       -var "image_tag=${{ env.IMAGE_TAG }}" \
-      #       -var "dns_prefix=${{ env.DNS_PREFIX }}" \
-      #       -var "use_bastion_ssh_tunnel=false" \
-      #       ${FORCE_DEPLOY_PARAM}
+          if [ ! -z ${{ env.DNS_PREFIX }} ]; then
+            EXTRA_PARAMS="${EXTRA_PARAMS} -var "dns_prefix=${{ env.DNS_PREFIX }}""
+          fi
+
+          terraform apply \
+            -auto-approve \
+            -var-file terraform-${{ env.CLUSTER }}.tfvars \
+            -var "image_tag=${{ env.IMAGE_TAG }}" \
+            -var "use_bastion_ssh_tunnel=false" \
+            ${FORCE_DEPLOY_PARAM}
