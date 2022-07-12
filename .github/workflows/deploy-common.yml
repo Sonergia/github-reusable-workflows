@@ -1,4 +1,4 @@
-name: terraform deploy common
+name: terraform deploy common workflow
 
 on:
   workflow_call:
@@ -22,17 +22,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ inputs.CLUSTER }}
   # cancel-in-progress: true
 
-env:
-  AWS_DEFAULT_REGION: ${{ inputs.AWS_DEFAULT_REGION }}
-  CLUSTER: ${{ inputs.CLUSTER }}
-
 jobs:
   deploy-common:
+    name: Terraform deploy common on cluster '${{ inputs.CLUSTER }}'
     runs-on: ubuntu-latest
-
-    defaults:
-      run:
-        working-directory: ./.terraform
 
     steps:
       - name: Checkout
@@ -43,7 +36,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_TF }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_TF }}
-          aws-region: ${{ env.AWS_DEFAULT_REGION }}
+          aws-region: ${{ inputs.AWS_DEFAULT_REGION }}
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
@@ -57,20 +50,26 @@ jobs:
             && ssh-keyscan github.com > known_hosts
             && chmod 600 id_rsa known_hosts
             && ssh -i ./id_rsa -o UserKnownHostsFile=./known_hosts"
+        working-directory: ./.terraform
         run: |
           cd ./common/ecr
           terraform init -upgrade
           terraform validate -no-color
           terraform apply -auto-approve
 
-      - name: Terraform config cluster '${{ env.CLUSTER }}' (init / validate / apply)
+      - name: Terraform config cluster '${{ inputs.CLUSTER }}' (init / validate / apply)
         env:
           GIT_SSH_COMMAND: "echo '${{ secrets.GH_TF_SSH_KEY_JULIEN_LEDOUX }}' > id_rsa
             && ssh-keyscan github.com > known_hosts
             && chmod 600 id_rsa known_hosts
             && ssh -i ./id_rsa -o UserKnownHostsFile=./known_hosts"
+        working-directory: ./.terraform
         run: |
-          cd ./common/config-cluster
-          terraform init -reconfigure -upgrade -backend-config=backend-${{ env.CLUSTER }}.conf
-          terraform validate -no-color
-          terraform apply -auto-approve -var-file terraform-${{ env.CLUSTER }}.tfvars
+          if [ -d ./common/config-cluster ]; then
+            cd ./common/config-cluster
+            terraform init -reconfigure -upgrade -backend-config=backend-${{ inputs.CLUSTER }}.conf
+            terraform validate -no-color
+            terraform apply -auto-approve -var-file terraform-${{ inputs.CLUSTER }}.tfvars
+          else
+            echo "::warning title=Deploy common::Terraform dir './common/config-cluster' does not exists (but it might be on purpose)"
+          fi

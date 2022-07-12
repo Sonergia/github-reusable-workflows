@@ -1,4 +1,4 @@
-name: define github workflows and terraform vars
+name: define github workflows and terraform vars workflow
 
 on:
   workflow_call:
@@ -22,8 +22,8 @@ jobs:
   # Define concurrency code for workflows
   define-vars:
     runs-on: ubuntu-latest
-    steps:
 
+    steps:
       - name: Checkout
         uses: actions/checkout@v3
 

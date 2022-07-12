@@ -1,4 +1,4 @@
-name: terraform deploy service
+name: terraform deploy service workflow
 
 on:
   workflow_call:
@@ -14,15 +14,16 @@ on:
         required: true
         type: string
       IMAGE_SHA:
-        required: true
-        type: string
-      IMAGE_TAG:
-        required: true
-        type: string
-      FORCE_DEPLOYMENT:
         required: false
+        type: string
+        default: null
+      IMAGE_TAG:
+        required: false
+        type: string
+        default: null
+      FORCE_DEPLOYMENT:
+        required: true
         type: boolean
-        default: false
       DNS_PREFIX:
         required: false
         type: string
@@ -39,32 +40,31 @@ concurrency:
   group: ${{ github.workflow }}-${{ inputs.CLUSTER }}
   # cancel-in-progress: true
 
-env:
-  AWS_DEFAULT_REGION: ${{ inputs.AWS_DEFAULT_REGION }}
-  CLUSTER: ${{ inputs.CLUSTER }}
-  SERVICE: ${{ inputs.SERVICE }}
-  IMAGE_SHA: ${{ inputs.IMAGE_SHA }}
-  IMAGE_TAG: ${{ inputs.IMAGE_TAG }}
-  FORCE_DEPLOYMENT: ${{ inputs.FORCE_DEPLOYMENT }}
-
 jobs:
   deploy-service:
+    name: Terraform deploy service '${{ inputs.SERVICE }}' on cluster '${{ inputs.CLUSTER }}'
     runs-on: [self-hosted, "${{ inputs.CLUSTER }}"]
-
-    defaults:
-      run:
-        working-directory: ./.terraform/services
 
     steps:
       - name: Checkout
         uses: actions/checkout@v3
+
+      - name: Check required inputs
+        run: |
+          # Check that at least IMAGE_TAG is provided
+          if [ -z "${{ inputs.IMAGE_SHA }}" ]; then
+            if [ -z "${{ inputs.IMAGE_TAG }}" ]; then
+              echo "::error title=Deploy service::Input error: IMAGE_SHA and IMAGE_TAG can not be both empty ('${{ inputs.SERVICE }}' on cluster '${{ inputs.CLUSTER }}')"
+              exit 1
+            fi
+          fi
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v1
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_TF }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_TF }}
-          aws-region: ${{ env.AWS_DEFAULT_REGION }}
+          aws-region: ${{ inputs.AWS_DEFAULT_REGION }}
 
       # - uses: actions/setup-node@v2
       #   with:
@@ -76,38 +76,53 @@ jobs:
           terraform_version: 1.2.3
           terraform_wrapper: false # Fix "/usr/bin/env: ‘node’: No such file or directory"
 
-      - name: Terraform init service '${{ env.SERVICE }}' on cluster '${{ env.CLUSTER }}' configuration
+      - name: Terraform init service '${{ inputs.SERVICE }}' on cluster '${{ inputs.CLUSTER }}' configuration
         env:
           GIT_SSH_COMMAND: "echo '${{ secrets.GH_TF_SSH_KEY_JULIEN_LEDOUX }}' > id_rsa
             && ssh-keyscan github.com > known_hosts
             && chmod 600 id_rsa known_hosts
             && ssh -i ./id_rsa -o UserKnownHostsFile=./known_hosts"
+        working-directory: ./.terraform/services
         run: |
-          cd ${{ env.SERVICE }}
-          terraform init -reconfigure -upgrade -backend-config=backend-${{ env.CLUSTER }}.conf
+          cd ${{ inputs.SERVICE }}
+          terraform init -reconfigure -upgrade -backend-config=backend-${{ inputs.CLUSTER }}.conf
 
       - name: Terraform validate
+        working-directory: ./.terraform/services
         run: |
-          cd ${{ env.SERVICE }}
+          cd ${{ inputs.SERVICE }}
           terraform validate -no-color
 
-      - name: Terraform apply service '${{ env.SERVICE }}' on cluster '${{ env.CLUSTER }}'
+      - name: Terraform apply service '${{ inputs.SERVICE }}' on cluster '${{ inputs.CLUSTER }}'
+        working-directory: ./.terraform/services
         run: |
-          cd ${{ env.SERVICE }}
+          cd ${{ inputs.SERVICE }}
+
+          DOCKER_IMAGE_TAG=${{ inputs.IMAGE_SHA }}
+
+          if [ -z "${{ inputs.IMAGE_SHA }}" ]; then
+            DOCKER_IMAGE_TAG=${{ inputs.IMAGE_TAG }}
+          fi
+
+          echo "::debug title=Deploy service::Docker image tag is ${DOCKER_IMAGE_TAG}"
 
           EXTRA_PARAMS=
 
-          if [ ${{ env.FORCE_DEPLOYMENT }} == "true" ]; then
-            EXTRA_PARAMS="${EXTRA_PARAMS} -replace=module.${{ env.SERVICE }}-service.aws_ecs_task_definition.task"
+          if [ "${{ inputs.FORCE_DEPLOYMENT }}" == "true" ]; then
+            EXTRA_PARAMS="${EXTRA_PARAMS} -replace=module.${{ inputs.SERVICE }}-service.aws_ecs_task_definition.task"
+            echo "::debug title=Deploy service::Force deployment has been set"
           fi
 
-          if [ ! -z ${{ env.DNS_PREFIX }} ]; then
+          if [ ! -z "${{ env.DNS_PREFIX }}" ]; then
             EXTRA_PARAMS="${EXTRA_PARAMS} -var "dns_prefix=${{ env.DNS_PREFIX }}""
+            echo "::debug title=Deploy service::A dns prefix has been set"
           fi
+
+          echo "::notice title=Deploy service::Terraform is deploying '${{ inputs.SERVICE }}' on cluster '${{ inputs.CLUSTER }}'"
 
           terraform apply \
             -auto-approve \
-            -var-file terraform-${{ env.CLUSTER }}.tfvars \
-            -var "image_tag=${{ env.IMAGE_TAG }}" \
+            -var-file terraform-${{ inputs.CLUSTER }}.tfvars \
+            -var "image_tag=${DOCKER_IMAGE_TAG}" \
             -var "use_bastion_ssh_tunnel=false" \
             ${FORCE_DEPLOY_PARAM}

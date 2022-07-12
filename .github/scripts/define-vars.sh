@@ -53,7 +53,7 @@ if  [ ${GITHUB_REF_TYPE} == "tag" ]; then
             # SemVer without suffix (1.0.0)
             CLUSTER=prod
         else
-            echo "::error title=Tag format error::Your git tag does not respect Semantic Versioning format, see https://regex101.com/r/vkijKf/1/"
+            echo "::error title=Define vars::Tag format error: your git tag does not respect Semantic Versioning, see https://regex101.com/r/vkijKf/1/"
             echo "::debug::Could not define cluster with ref_type '${GITHUB_REF_TYPE}' and ref_name '${GITHUB_REF_NAME}'"
             exit 1
         fi
@@ -77,7 +77,7 @@ elif [ ${GITHUB_REF_TYPE} == "branch" ]; then
         JIRA_TICKET_CODE=$(echo ${JIRA_TICKET_CODE} | grep -P -o '^[A-Z]{2,}-[0-9]+')
 
         if [ -z ${JIRA_TICKET_CODE} ]; then
-            echo "::error title=Naming convention error::Could not extract JIRA ticket code from PR source branch '${GITHUB_HEAD_REF}'"
+            echo "::error title=Define vars::Naming convention error: could not extract JIRA ticket code from PR source branch ref '${GITHUB_HEAD_REF}'"
             exit 1
         fi
 
@@ -92,11 +92,11 @@ elif [ ${GITHUB_REF_TYPE} == "branch" ]; then
     fi
 fi
 
-echo "::notice title=Cluster::Cluster output value is '${CLUSTER}'"
-echo "::notice title=Concurrency::Concurrency code output value is '${CONCURRENCY_CODE}'"
+echo "::notice title=Define vars::Cluster output value is '${CLUSTER}'"
+echo "::notice title=Define vars::Concurrency code output value is '${CONCURRENCY_CODE}'"
 
 if [ -z ${CLUSTER} ] || [ -z ${CONCURRENCY_CODE} ]; then
-    echo "::error title=Something went wrong::Could not define one or more vars with event '${GITHUB_EVENT_NAME}', ref_type '${GITHUB_REF_TYPE}', ref_name '${GITHUB_REF_NAME}'"
+    echo "::error title=Define vars::Could not define one or more required vars with event '${GITHUB_EVENT_NAME}', ref_type '${GITHUB_REF_TYPE}', ref_name '${GITHUB_REF_NAME}'"
     exit 1
 fi
 
