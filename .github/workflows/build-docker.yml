@@ -4,25 +4,19 @@ on:
   workflow_call:
     inputs:
       AWS_DEFAULT_REGION:
-        required: false
+        required: true
         type: string
-        default: eu-west-3
       DOCKERFILE_BUILD_CONTEXT:
         required: true
         type: string
-      DOCKERFILE_BUILD_PATH:
-        required: true
-        type: string
+        default: '.'
       SERVICE_NAMESPACE:
         required: true
         type: string
-      IMAGE_NAME:
+      IMAGE_NAMES:
         required: true
         type: string
-      IMAGE_STATIC_TAG:
-        required: false
-        type: string
-      CONCURRENCY_CODE:
+      IMAGE_TAG:
         required: true
         type: string
     secrets:
@@ -31,21 +25,22 @@ on:
       AWS_SECRET_ACCESS_KEY_TF:
         required: true
 
+# No need for image name in concurrency group when using matrix which always run in parallel
 concurrency:
-  group: ${{ github.workflow }}-${{ inputs.SERVICE_NAMESPACE }}-${{ inputs.IMAGE_NAME }}-${{ inputs.CONCURRENCY_CODE }}
-  # cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ inputs.SERVICE_NAMESPACE }}-${{ inputs.IMAGE_TAG }}
+  cancel-in-progress: false
 
 jobs:
   build-push-docker-image:
-    name: Build docker ${{ inputs.SERVICE_NAMESPACE }}/${{ inputs.IMAGE_NAME }}
+    name: Build docker ${{ inputs.SERVICE_NAMESPACE }}/${{ matrix.image_name }}
     runs-on: ubuntu-latest
-    # strategy:
-    #   matrix:
-    #     container: ${{fromJson(inputs.IMAGE_NAMES)}}
+
+    strategy:
+      matrix:
+        image_name: ${{ fromJson(inputs.IMAGE_NAMES) }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v1
@@ -79,7 +74,7 @@ jobs:
         uses: docker/metadata-action@v3
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: ${{ inputs.SERVICE_NAMESPACE }}/${{ inputs.IMAGE_NAME }}
+          ECR_REPOSITORY: ${{ inputs.SERVICE_NAMESPACE }}/${{ matrix.image_name }}
         with:
           images: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}
           tags: |
@@ -88,7 +83,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}},enable=${{ !startsWith(github.ref, 'refs/tags/v0.') }}
             type=sha
-            type=raw,value=${{ inputs.IMAGE_STATIC_TAG }}
+            type=raw,value=${{ inputs.IMAGE_TAG }}
 
       # - name: Set up QEMU
       #   uses: docker/setup-qemu-action@v1
@@ -108,16 +103,28 @@ jobs:
           key: ${{ runner.os }}-buildx-${{ github.sha }}
           restore-keys: ${{ runner.os }}-buildx-
 
+      - name: Get build context path
+        id: get-context
+        run: |
+          BUILD_CONTEXT=${{ inputs.DOCKERFILE_BUILD_CONTEXT }}
+
+          # Build context is not root
+          if [ ${{ inputs.DOCKERFILE_BUILD_CONTEXT }} != '.' ]; then
+            BUILD_CONTEXT=${{ inputs.DOCKERFILE_BUILD_CONTEXT }}/${{ matrix.image_name }}
+          fi
+
+          echo "::set-output name=BUILD_CONTEXT::${BUILD_CONTEXT}"
+
       - name: Build and push Docker images
         id: build-image
         uses: docker/build-push-action@v2
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: ${{ inputs.SERVICE_NAMESPACE }}/${{ inputs.IMAGE_NAME }}
+          ECR_REPOSITORY: ${{ inputs.SERVICE_NAMESPACE }}/${{ matrix.image_name }}
           GIT_SHA_SHORT: ${{ steps.docker-meta.outputs.sha_short }}
         with:
-          context: ${{ inputs.DOCKERFILE_BUILD_CONTEXT }}
-          file: ${{ inputs.DOCKERFILE_BUILD_PATH }}/Dockerfile
+          context: ${{ steps.get-context.outputs.BUILD_CONTEXT }}
+          file: ./.docker/${{ matrix.image_name }}/Dockerfile
           target: prod
           # platforms: ${{ steps.qemu.outputs.platforms }}
           platforms: linux/amd64
@@ -129,4 +136,12 @@ jobs:
           labels: ${{ steps.docker-meta.outputs.labels }}
           builder: ${{ steps.buildx.outputs.name }}
           cache-from: type=local,src=/tmp/.buildx-cache
-          cache-to: type=local,dest=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+
+        # Temp local cache fix
+        # https://github.com/docker/build-push-action/issues/252
+        # https://github.com/moby/buildkit/issues/1896
+      - name: Move cache
+        run: |
+          rm -rf /tmp/.buildx-cache
+          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
