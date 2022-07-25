@@ -4,22 +4,17 @@ on:
   workflow_call:
     inputs:
       AWS_DEFAULT_REGION:
-        required: false
+        required: true
         type: string
-        default: eu-west-3
       SERVICE_NAMESPACE:
         required: true
         type: string
       IMAGE_NAMES:
-        description: 'List of images repo names'
         required: true
         type: string
-      IMAGE_STATIC_TAG:
-        required: false
+      IMAGE_SHA:
+        required: true
         type: string
-      # CONCURRENCY_CODE:
-      #   required: true
-      #   type: string
     secrets:
       AWS_ACCESS_KEY_ID_TF:
         required: true
@@ -30,33 +25,21 @@ on:
       IMAGE_EXISTS:
         description: "Indicate if Docker image already exists in ECR for current git commit SHA"
         value: ${{ jobs.aws-ecr.outputs.IMAGE_EXISTS }}
-      IMAGE_TAG:
-        description: "Docker image tag"
-        value: ${{ jobs.aws-ecr.outputs.IMAGE_TAG }}
-      IMAGE_SHA:
-        description: "Docker image git commit SHA"
-        value: ${{ jobs.aws-ecr.outputs.IMAGE_SHA }}
 
 # concurrency:
-#   group: ${{ github.workflow }}-${{ inputs.SERVICE_NAMESPACE }}-${{ inputs.IMAGE_NAME }}-${{ inputs.CONCURRENCY_CODE }}
+#   group: ${{ github.workflow }}-${{ inputs.SERVICE_NAMESPACE }}-${{ inputs.IMAGE_NAME }}-${{ inputs.IMAGE_SHA }}
 
 jobs:
   aws-ecr:
     name: Configure ECR repo ${{ inputs.SERVICE_NAMESPACE }}/${{ matrix.image_name }}
     runs-on: ubuntu-latest
+
     strategy:
       matrix:
-        image_name: ${{fromJson(inputs.IMAGE_NAMES)}}
+        image_name: ${{ fromJson(inputs.IMAGE_NAMES) }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-
-      - name: Git output sha short
-        id: git-sha
-        run: |
-          # Add missing docker meta sha_short output
-          echo "::set-output name=sha_short::sha-$(git rev-parse --short HEAD)"
+      - uses: actions/checkout@v3
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v1
@@ -88,16 +71,14 @@ jobs:
           IMAGE_SHA=$(aws ecr list-images \
             --repository-name ${{ inputs.SERVICE_NAMESPACE }}/${{ matrix.image_name }} \
             --filter tagStatus=TAGGED \
-            | jq -c '.imageIds[] | select(.imageTag == "${{ steps.git-sha.outputs.sha_short }}")')
+            | jq -c '.imageIds[] | select(.imageTag == "${{ inputs.IMAGE_SHA }}")')
 
           if [ ! -z "${IMAGE_SHA}" ]; then
             IMAGE_EXISTS=true
-            echo "::notice title=AWS ECR::Image tag '${{ steps.git-sha.outputs.sha_short }}' already exists in ${{ inputs.SERVICE_NAMESPACE }}/${{ matrix.image_name }}. Build jobs will be skipped."
+            echo "::notice title=AWS ECR::Image tag '${{ inputs.IMAGE_SHA }}' already exists in ${{ inputs.SERVICE_NAMESPACE }}/${{ matrix.image_name }}. Build jobs will be skipped."
           fi
 
           echo "::set-output name=exists::${IMAGE_EXISTS}"
 
     outputs:
       IMAGE_EXISTS: ${{ steps.check-image-ecr.outputs.exists }}
-      IMAGE_TAG: ${{ inputs.IMAGE_STATIC_TAG }}
-      IMAGE_SHA: ${{ steps.git-sha.outputs.sha_short }}

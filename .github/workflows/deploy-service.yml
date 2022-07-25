@@ -4,13 +4,12 @@ on:
   workflow_call:
     inputs:
       AWS_DEFAULT_REGION:
-        required: false
+        required: true
         type: string
-        default: eu-west-3
       CLUSTER:
         required: true
         type: string
-      SERVICE:
+      SERVICES:
         required: true
         type: string
       IMAGE_SHA:
@@ -21,9 +20,10 @@ on:
         required: false
         type: string
         default: null
+      # FORCE_DEPLOYMENT is not bool because output transforms it in text
       FORCE_DEPLOYMENT:
         required: true
-        type: boolean
+        type: string
       DNS_PREFIX:
         required: false
         type: string
@@ -38,23 +38,26 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ inputs.CLUSTER }}
-  # cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   deploy-service:
-    name: Terraform deploy service '${{ inputs.SERVICE }}' on cluster '${{ inputs.CLUSTER }}'
+    name: Terraform deploy service '${{ matrix.service }}' on cluster '${{ inputs.CLUSTER }}'
     runs-on: [self-hosted, "${{ inputs.CLUSTER }}"]
 
+    strategy:
+      matrix:
+        service: ${{ fromJson(inputs.SERVICES) }}
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
       - name: Check required inputs
         run: |
           # Check that at least IMAGE_TAG is provided
           if [ -z "${{ inputs.IMAGE_SHA }}" ]; then
             if [ -z "${{ inputs.IMAGE_TAG }}" ]; then
-              echo "::error title=Deploy service::Input error: IMAGE_SHA and IMAGE_TAG can not be both empty ('${{ inputs.SERVICE }}' on cluster '${{ inputs.CLUSTER }}')"
+              echo "::error title=Deploy service::Input error: IMAGE_SHA and IMAGE_TAG can not be both empty ('${{ matrix.service }}' on cluster '${{ inputs.CLUSTER }}')"
               exit 1
             fi
           fi
@@ -76,7 +79,7 @@ jobs:
           terraform_version: 1.2.3
           terraform_wrapper: false # Fix "/usr/bin/env: ‘node’: No such file or directory"
 
-      - name: Terraform init service '${{ inputs.SERVICE }}' on cluster '${{ inputs.CLUSTER }}' configuration
+      - name: Terraform init service '${{ matrix.service }}' on cluster '${{ inputs.CLUSTER }}' configuration
         env:
           GIT_SSH_COMMAND: "echo '${{ secrets.GH_TF_SSH_KEY_JULIEN_LEDOUX }}' > id_rsa
             && ssh-keyscan github.com > known_hosts
@@ -84,19 +87,19 @@ jobs:
             && ssh -i ./id_rsa -o UserKnownHostsFile=./known_hosts"
         working-directory: ./.terraform/services
         run: |
-          cd ${{ inputs.SERVICE }}
+          cd ${{ matrix.service }}
           terraform init -reconfigure -upgrade -backend-config=backend-${{ inputs.CLUSTER }}.conf
 
       - name: Terraform validate
         working-directory: ./.terraform/services
         run: |
-          cd ${{ inputs.SERVICE }}
+          cd ${{ matrix.service }}
           terraform validate -no-color
 
-      - name: Terraform apply service '${{ inputs.SERVICE }}' on cluster '${{ inputs.CLUSTER }}'
+      - name: Terraform apply service '${{ matrix.service }}' on cluster '${{ inputs.CLUSTER }}'
         working-directory: ./.terraform/services
         run: |
-          cd ${{ inputs.SERVICE }}
+          cd ${{ matrix.service }}
 
           DOCKER_IMAGE_TAG=${{ inputs.IMAGE_SHA }}
 
@@ -109,7 +112,7 @@ jobs:
           EXTRA_PARAMS=
 
           if [ "${{ inputs.FORCE_DEPLOYMENT }}" == "true" ]; then
-            EXTRA_PARAMS="${EXTRA_PARAMS} -replace=module.${{ inputs.SERVICE }}-service.aws_ecs_task_definition.task"
+            EXTRA_PARAMS="${EXTRA_PARAMS} -replace=module.${{ matrix.service }}-service.aws_ecs_task_definition.task"
             echo "::debug title=Deploy service::Force deployment has been set"
           fi
 
@@ -118,7 +121,7 @@ jobs:
             echo "::debug title=Deploy service::A dns prefix has been set"
           fi
 
-          echo "::notice title=Deploy service::Terraform is deploying '${{ inputs.SERVICE }}' on cluster '${{ inputs.CLUSTER }}'"
+          echo "::notice title=Deploy service::Terraform is deploying '${{ matrix.service }}' on cluster '${{ inputs.CLUSTER }}'"
 
           terraform apply \
             -auto-approve \
