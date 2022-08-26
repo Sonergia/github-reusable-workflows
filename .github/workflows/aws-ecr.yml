@@ -52,14 +52,14 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
-      - name: Create ECR Registry
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: ${{ inputs.SERVICE_NAMESPACE }}/${{ matrix.image_name }}
-        run: |
-          aws ecr create-repository \
-            --repository-name ${ECR_REPOSITORY} \
-            --region ${AWS_DEFAULT_REGION} || true
+      # - name: Create ECR Registry
+      #   env:
+      #     ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+      #     ECR_REPOSITORY: ${{ inputs.SERVICE_NAMESPACE }}/${{ matrix.image_name }}
+      #   run: |
+      #     aws ecr create-repository \
+      #       --repository-name ${ECR_REPOSITORY} \
+      #       --region ${AWS_DEFAULT_REGION} || true
 
       - name: Check if image SHA tag already exists in ECR
         id: check-image-ecr
