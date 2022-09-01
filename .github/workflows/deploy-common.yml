@@ -42,7 +42,7 @@ jobs:
           terraform_version: 1.2.3
 
       # Common part
-      - name: Terraform ECR (init / validate / apply)
+      - name: Terraform config global (init / validate / apply)
         env:
           GIT_SSH_COMMAND: "echo '${{ secrets.GH_TF_SSH_KEY_JULIEN_LEDOUX }}' > id_rsa
             && ssh-keyscan github.com > known_hosts
@@ -50,10 +50,14 @@ jobs:
             && ssh -i ./id_rsa -o UserKnownHostsFile=./known_hosts"
         working-directory: ./.terraform
         run: |
-          cd ./common/ecr
-          terraform init -upgrade
-          terraform validate -no-color
-          terraform apply -auto-approve
+          if [ -d ./common/config-global ]; then
+            cd ./common/config-global
+            terraform init -upgrade
+            terraform validate -no-color
+            terraform apply -auto-approve
+          else
+            echo "::warning title=Deploy common::Terraform dir './common/config-global' does not exists (but it might be on purpose)"
+          fi
 
       - name: Terraform config cluster '${{ inputs.CLUSTER }}' (init / validate / apply)
         env:
