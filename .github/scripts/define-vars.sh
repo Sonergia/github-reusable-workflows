@@ -47,6 +47,8 @@
 # GITHUB_HEAD_REF=
 # GITHUB_REF_NAME=1.0.0
 
+CREATE_TAG_LATEST="false"
+
 # Manual case uses image static tag (such as "latest")
 if  [ ${GITHUB_EVENT_NAME} == "workflow_dispatch" ]; then
     IMAGE_TAG=${IMAGE_STATIC_TAG}
@@ -60,6 +62,7 @@ elif  [ ${GITHUB_REF_TYPE} == "tag" ] && [ ${GITHUB_EVENT_NAME} == "release" ]; 
     elif [[ $(echo ${GITHUB_REF_NAME} | grep -P '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$') ]]; then
         # SemVer without suffix (1.0.0)
         CLUSTER=prod
+        CREATE_TAG_LATEST="true"
     else
         echo "::error title=Define vars::Tag format error: your git tag does not respect Semantic Versioning, see https://regex101.com/r/vkijKf/1/"
         echo "::debug::Could not define cluster with ref_type '${GITHUB_REF_TYPE}' and ref_name '${GITHUB_REF_NAME}'"
@@ -96,6 +99,7 @@ fi
 
 echo "::notice title=Define vars::Cluster output value is '${CLUSTER}'"
 echo "::notice title=Define vars::Image tag output value is '${IMAGE_TAG}'"
+echo "::notice title=Define vars::Create tag latest is '${CREATE_TAG_LATEST}'"
 
 if [ -z ${CLUSTER} ] || [ -z ${IMAGE_TAG} ]; then
     echo "::error title=Define vars::Could not define one or more required vars with event '${GITHUB_EVENT_NAME}', ref_type '${GITHUB_REF_TYPE}', ref_name '${GITHUB_REF_NAME}'"
@@ -104,3 +108,4 @@ fi
 
 echo "::set-output name=CLUSTER::${CLUSTER}"
 echo "::set-output name=IMAGE_TAG::${IMAGE_TAG}"
+echo "::set-output name=CREATE_TAG_LATEST::${CREATE_TAG_LATEST}"

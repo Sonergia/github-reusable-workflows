@@ -19,6 +19,9 @@ on:
       IMAGE_TAG:
         required: true
         type: string
+      CREATE_TAG_LATEST:
+        required: true
+        type: string
     secrets:
       AWS_ACCESS_KEY_ID_TF:
         required: true
@@ -71,17 +74,19 @@ jobs:
 
       - name: Docker meta
         id: docker-meta
-        uses: docker/metadata-action@v3
+        uses: docker/metadata-action@v4
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: ${{ inputs.SERVICE_NAMESPACE }}/${{ matrix.image_name }}
         with:
           images: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}
+          flavor: |
+            latest=${{ inputs.CREATE_TAG_LATEST }}
           tags: |
             type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}},enable=${{ !startsWith(github.ref, 'refs/tags/v0.') }}
+            type=pep440,pattern={{version}}
+            type=pep440,pattern={{major}}.{{minor}}
+            type=pep440,pattern={{major}},enable=${{ !startsWith(github.ref, 'refs/tags/0.') }}
             type=sha
             type=raw,value=${{ inputs.IMAGE_TAG }}
 
