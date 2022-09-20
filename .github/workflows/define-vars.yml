@@ -107,9 +107,11 @@ jobs:
           show-on-exit: false
           show-on-failure: false
           include-files: false
-          environment: ${{ inputs.CLUSTER }}
+          # environment: ${{ inputs.CLUSTER }}
           timezone: Europe/Paris
           custom-facts: |
+            - name: Cluster
+              value: ${{ steps.set-vars.outputs.CLUSTER }}
             - name: Service(s)
               value: ${{ join(fromJson(inputs.SERVICES), ',') }}
 
