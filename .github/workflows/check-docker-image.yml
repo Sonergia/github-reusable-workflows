@@ -1,0 +1,114 @@
+name: Check if docker image already exists in ECR
+
+on:
+  workflow_call:
+    inputs:
+      AWS_DEFAULT_REGION:
+        required: true
+        type: string
+        # default: eu-west-3
+      SERVICE_NAMESPACE:
+        required: true
+        type: string
+      IMAGE_NAMES:
+        required: true
+        type: string
+      SHA_SHORT:
+        description: "Git commit SHA short (without 'sha-' prefix)"
+        required: false
+        type: string
+        default: ''
+    secrets:
+      AWS_ACCESS_KEY_ID_TF:
+        required: true
+      AWS_SECRET_ACCESS_KEY_TF:
+        required: true
+    # Map the workflow outputs to job outputs
+    outputs:
+      SHA_SHORT:
+        description: "Define SHA_SHORT from input or current git commit SHA"
+        value: ${{ jobs.set-git-sha.outputs.SHA_SHORT }}
+      IMAGE_SHA:
+        description: "Define IMAGE_SHA from input or current git commit SHA"
+        value: ${{ jobs.set-git-sha.outputs.IMAGE_SHA }}
+      IMAGE_EXISTS:
+        description: "Indicate if Docker image already exists in ECR for current git commit SHA"
+        value: ${{ jobs.aws-ecr.outputs.IMAGE_EXISTS }}
+
+# concurrency:
+#   group: ${{ github.workflow }}-${{ github.ref }}
+#   cancel-in-progress: true
+
+jobs:
+  set-git-sha:
+    name: Set git SHA short
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+
+    steps:
+      - uses: actions/checkout@v3
+        if: ${{ inputs.SHA_SHORT == '' }}
+
+      - name: Git output SHA short
+        id: git-sha
+        run: |
+          if [ "${{ inputs.SHA_SHORT }}" != "" ]; then
+            SHA_SHORT=${{ inputs.SHA_SHORT }}
+          else
+            SHA_SHORT=$(git rev-parse --short HEAD)
+          fi
+
+          if [ -z ${SHA_SHORT} ]; then
+            echo "::error title=Check docker image::Image SHA can not be empty"
+            exit 1
+          fi
+
+          echo "::notice title=Check docker image::GIT SHA output value is '${SHA_SHORT}'"
+          echo "::set-output name=sha_short::${SHA_SHORT}"
+          echo "::set-output name=image_sha::sha-${SHA_SHORT}"
+
+    # Map the job outputs to step outputs
+    outputs:
+      SHA_SHORT: ${{ steps.git-sha.outputs.sha_short }}
+      IMAGE_SHA: ${{ steps.git-sha.outputs.image_sha }}
+
+  aws-ecr:
+    name: Check docker image exists
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+
+    needs:
+      - set-git-sha
+
+    strategy:
+      matrix:
+        image_name: ${{ fromJson(inputs.IMAGE_NAMES) }}
+
+    steps:
+      # Checkout reusable workflow to get bash scripts
+      - uses: actions/checkout@v3
+        with:
+          repository: Sonergia/github-reusable-workflows
+          ref: 'delivery' # Only when testing ############## /!\ ##############
+
+      - name: Install packages (jq)
+        run: |
+          sudo apt-get -y install jq
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_TF }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_TF }}
+          aws-region: ${{ inputs.AWS_DEFAULT_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Check if image SHA tag and release tag already exists in ECR, add release tag otherwise
+        id: check-image-ecr
+        run: ./.github/scripts/check-image-ecr.sh ${{ inputs.SERVICE_NAMESPACE }} ${{ matrix.image_name }} ${{ needs.set-git-sha.outputs.IMAGE_SHA }}
+
+    outputs:
+      IMAGE_EXISTS: ${{ steps.check-image-ecr.outputs.exists }}

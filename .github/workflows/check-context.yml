@@ -1,0 +1,92 @@
+name: Check context
+
+on:
+  workflow_call:
+    inputs:
+      CLUSTER:
+        required: true
+        type: string
+      SERVICES:
+        required: true
+        type: string
+      NOTIFICATIONS_TEAMS:  # booleans must be treated as string
+        required: false
+        type: string
+        default: 'true'
+    secrets:
+      MS_TEAMS_WEBHOOK_URI:
+        required: true
+    # Map the workflow outputs to job outputs
+    outputs:
+      CLUSTER:
+        description: "Cluster name to deploy onto (test, release, prod)"
+        value: ${{ jobs.check-context.outputs.CLUSTER }}
+      JIRA_CODE:
+        description: "JIRA ticket code found in branch name"
+        value: ${{ jobs.check-context.outputs.JIRA_CODE }}
+      IMAGE_TAG:
+        description: "Docker image tag"
+        value: ${{ jobs.check-context.outputs.IMAGE_TAG }}
+      CREATE_TAG_LATEST:
+        description: "Docker image should be tag as latest"
+        value: ${{ jobs.check-context.outputs.CREATE_TAG_LATEST }}
+
+# Env vars are used in bash scripts
+env:
+  CLUSTER: ${{ inputs.CLUSTER }}
+
+jobs:
+  check-context:
+    name: Check git context
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+
+    steps:
+      # Checkout reusable workflow to get bash scripts
+      - uses: actions/checkout@v3
+        with:
+          repository: Sonergia/github-reusable-workflows
+          ref: 'delivery' # Only when testing ############## /!\ ##############
+
+      - name: Set context from git and inputs
+        id: set-context
+        run: ./.github/scripts/set-context.sh
+
+      - name: Change string case function
+        id: string
+        uses: ASzc/change-string-case-action@v2
+        with:
+          string: ${{ steps.set-context.outputs.CLUSTER }}
+
+      # Notify at the start of workflow
+      - name: Notify teams channel
+        uses: djthornton1212/ms-teams-notification@e658184be2a664fae7a9220bb38eb97b0a5946a6
+        if: ${{ always() && inputs.NOTIFICATIONS_TEAMS == 'true' }}
+        with:
+          github-token: ${{ github.token }}
+          ms-teams-webhook-uri: ${{ secrets.MS_TEAMS_WEBHOOK_URI }}
+          notification-summary: Déploiement en cours...
+          notification-color: 999999
+          timezone: Europe/Paris
+          view-commit-changes: true
+          view-workflow-run: true
+          view-pull-request: false
+          custom-facts: |
+            - name: Status
+              value: ⏱ in progress...
+            - name: Cluster
+              value: ${{ steps.string.outputs.uppercase }}
+            - name: Service(s)
+              value: ${{ join(fromJson(inputs.SERVICES), ',') }}
+            - name: Branche
+              value: ${{ github.server_url }}/${{ github.repository }}/tree/${{ github.ref }}
+            - name: Commit
+              value: ${{ steps.set-context.outputs.COMMIT_MESSAGE }}
+            - name: Url du Jira
+              value: https://sonergia.atlassian.net/browse/${{ steps.set-context.outputs.JIRA_CODE }}
+
+    outputs:
+      CLUSTER: ${{ steps.set-context.outputs.CLUSTER }}
+      JIRA_CODE: ${{ steps.set-context.outputs.JIRA_CODE }}
+      IMAGE_TAG: ${{ steps.set-context.outputs.IMAGE_TAG }}
+      CREATE_TAG_LATEST: ${{ steps.set-context.outputs.CREATE_TAG_LATEST }}

@@ -14,7 +14,7 @@ on:
         required: true
       AWS_SECRET_ACCESS_KEY_TF:
         required: true
-      GH_TF_SSH_KEY_JULIEN_LEDOUX:
+      GH_TF_SSH_KEY:
         required: true
 
 concurrency:
@@ -22,9 +22,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy-common:
-    name: Terraform deploy common on cluster '${{ inputs.CLUSTER }}'
+  tf-common:
+    name: Tf common on cluster '${{ inputs.CLUSTER }}'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v3
@@ -44,7 +45,7 @@ jobs:
       # Common part
       - name: Terraform config global (init / validate / apply)
         env:
-          GIT_SSH_COMMAND: "echo '${{ secrets.GH_TF_SSH_KEY_JULIEN_LEDOUX }}' > id_rsa
+          GIT_SSH_COMMAND: "echo '${{ secrets.GH_TF_SSH_KEY }}' > id_rsa
             && ssh-keyscan github.com > known_hosts
             && chmod 600 id_rsa known_hosts
             && ssh -i ./id_rsa -o UserKnownHostsFile=./known_hosts"
@@ -61,7 +62,7 @@ jobs:
 
       - name: Terraform config cluster '${{ inputs.CLUSTER }}' (init / validate / apply)
         env:
-          GIT_SSH_COMMAND: "echo '${{ secrets.GH_TF_SSH_KEY_JULIEN_LEDOUX }}' > id_rsa
+          GIT_SSH_COMMAND: "echo '${{ secrets.GH_TF_SSH_KEY }}' > id_rsa
             && ssh-keyscan github.com > known_hosts
             && chmod 600 id_rsa known_hosts
             && ssh -i ./id_rsa -o UserKnownHostsFile=./known_hosts"

@@ -1,0 +1,144 @@
+name: Main workflow
+
+on:
+  workflow_call:
+    inputs:
+      AWS_DEFAULT_REGION:
+        required: false
+        type: string
+        default: eu-west-3
+      CLUSTER:
+        required: true
+        type: string
+      SERVICE_NAMESPACE:
+        required: true
+        type: string
+      SERVICES:
+        description: "Services list for matrix strategy"
+        required: true
+        type: string
+      IMAGE_NAMES:
+        description: "Images list for matrix strategy"
+        required: true
+        type: string
+      IMAGE_SHA:
+        required: true
+        type: string
+      IMAGE_EXISTS:   # booleans must be treated as string
+        required: true
+        type: string
+      DOCKERFILE_BUILD_CONTEXT:
+        required: false
+        type: string
+        default: '.'
+      FORCE_DEPLOYMENT:
+        required: false
+        type: string
+        default: 'false'
+      NOTIFICATIONS_JIRA:
+        required: false
+        type: string
+        default: 'true'
+      NOTIFICATIONS_TEAMS:
+        required: false
+        type: string
+        default: 'true'
+    secrets:
+      AWS_ACCESS_KEY_ID_TF:
+        required: true
+      AWS_SECRET_ACCESS_KEY_TF:
+        required: true
+      GH_TF_SSH_KEY:
+        required: true
+      MS_TEAMS_WEBHOOK_URI:
+        required: true
+      JIRA_USER_EMAIL:
+        required: true
+      JIRA_API_TOKEN:
+        required: true
+
+concurrency:
+  group: main-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Env context is not available in reusable workflows (with, if, run)
+# See https://github.com/actions/runner/issues/480
+# env: ...
+
+jobs:
+  check-context:
+    uses: Sonergia/github-reusable-workflows/.github/workflows/check-context.yml@delivery
+    with:
+      CLUSTER: ${{ inputs.CLUSTER }}
+      SERVICES: ${{ inputs.SERVICES }}
+      NOTIFICATIONS_TEAMS: ${{ inputs.NOTIFICATIONS_TEAMS }}
+    secrets:
+      MS_TEAMS_WEBHOOK_URI: ${{ secrets.MS_TEAMS_WEBHOOK_URI }}
+
+  # # Application software dedicated build process
+  # build-application:
+  #   needs:
+  #     - check-context
+  #   # The "uses" statement that calls the reusable workflow can’t evaluate expressions yet. That means the repo name, branch, etc. must be hardcoded.
+  #   uses: ${{ inputs.APPLICATION_BUILD_FILE_PATH }}
+  #   if: ${{ inputs.APPLICATION_BUILD_FILE_PATH != '' && inputs.IMAGE_EXISTS == 'false' }}
+
+#--------------------------------------------------------
+
+  # Terraform deploy common (with reusable workflows)
+  deploy-common:
+    needs:
+      - check-context
+    uses: Sonergia/github-reusable-workflows/.github/workflows/deploy-common.yml@delivery
+    with:
+      AWS_DEFAULT_REGION: ${{ inputs.AWS_DEFAULT_REGION }}
+      CLUSTER: ${{ needs.check-context.outputs.CLUSTER }}
+    secrets:
+      AWS_ACCESS_KEY_ID_TF: ${{ secrets.AWS_ACCESS_KEY_ID_TF }}
+      AWS_SECRET_ACCESS_KEY_TF: ${{ secrets.AWS_SECRET_ACCESS_KEY_TF }}
+      GH_TF_SSH_KEY: ${{ secrets.GH_TF_SSH_KEY }}
+
+  # Build and push docker image (with reusable workflows)
+  build-docker:
+    needs:
+      - check-context
+      - deploy-common
+    uses: Sonergia/github-reusable-workflows/.github/workflows/build-docker.yml@delivery
+    if: ${{ inputs.IMAGE_EXISTS == 'false' }}
+    with:
+      AWS_DEFAULT_REGION: ${{ inputs.AWS_DEFAULT_REGION }}
+      SERVICE_NAMESPACE: ${{ inputs.SERVICE_NAMESPACE }}
+      IMAGE_NAMES: ${{ inputs.IMAGE_NAMES }}
+      IMAGE_TAG: ${{ needs.check-context.outputs.IMAGE_TAG }}
+      CREATE_TAG_LATEST: ${{ needs.check-context.outputs.CREATE_TAG_LATEST }}
+      DOCKERFILE_BUILD_CONTEXT: ${{ inputs.DOCKERFILE_BUILD_CONTEXT }}
+    secrets:
+      AWS_ACCESS_KEY_ID_TF: ${{ secrets.AWS_ACCESS_KEY_ID_TF }}
+      AWS_SECRET_ACCESS_KEY_TF: ${{ secrets.AWS_SECRET_ACCESS_KEY_TF }}
+
+  # Terraform deploy service (with reusable workflows)
+  deploy-service:
+    needs:
+      - check-context
+      - build-docker
+      - deploy-common
+    uses: Sonergia/github-reusable-workflows/.github/workflows/deploy-service.yml@delivery
+    # always() condition avoid this jobs to be skipped if needed jobs are skipped
+    if: ${{ always() && needs.build-docker.conclusion != 'failure' }}
+    with:
+      AWS_DEFAULT_REGION: ${{ inputs.AWS_DEFAULT_REGION }}
+      CLUSTER: ${{ needs.check-context.outputs.CLUSTER }}
+      SERVICES: ${{ inputs.SERVICES }}
+      IMAGE_SHA: ${{ inputs.IMAGE_SHA }}
+      IMAGE_TAG: ${{ needs.check-context.outputs.IMAGE_TAG }}
+      JIRA_CODE: ${{ needs.check-context.outputs.JIRA_CODE }}
+      FORCE_DEPLOYMENT: ${{ inputs.FORCE_DEPLOYMENT }}
+      NOTIFICATIONS_JIRA: ${{ inputs.NOTIFICATIONS_JIRA }}
+      NOTIFICATIONS_TEAMS: ${{ inputs.NOTIFICATIONS_TEAMS }}
+    secrets:
+      AWS_ACCESS_KEY_ID_TF: ${{ secrets.AWS_ACCESS_KEY_ID_TF }}
+      AWS_SECRET_ACCESS_KEY_TF: ${{ secrets.AWS_SECRET_ACCESS_KEY_TF }}
+      GH_TF_SSH_KEY: ${{ secrets.GH_TF_SSH_KEY }}
+      MS_TEAMS_WEBHOOK_URI: ${{ secrets.MS_TEAMS_WEBHOOK_URI }}
+      JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+      JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}

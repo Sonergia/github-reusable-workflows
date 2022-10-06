@@ -6,10 +6,6 @@ on:
       AWS_DEFAULT_REGION:
         required: true
         type: string
-      DOCKERFILE_BUILD_CONTEXT:
-        required: true
-        type: string
-        default: '.'
       SERVICE_NAMESPACE:
         required: true
         type: string
@@ -22,6 +18,10 @@ on:
       CREATE_TAG_LATEST:
         required: true
         type: string
+      DOCKERFILE_BUILD_CONTEXT:
+        required: false
+        type: string
+        default: '.'
     secrets:
       AWS_ACCESS_KEY_ID_TF:
         required: true
@@ -37,6 +37,7 @@ jobs:
   build-push-docker-image:
     name: Build docker ${{ inputs.SERVICE_NAMESPACE }}/${{ matrix.image_name }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     strategy:
       matrix:
@@ -63,8 +64,8 @@ jobs:
           name: build-artifact
 
       - name: Download build artifact
-        if: ${{ steps.check-build-artifact.outputs.exists == 'true' }}
         uses: actions/download-artifact@v3
+        if: ${{ steps.check-build-artifact.outputs.exists == 'true' }}
         with:
           name: build-artifact
 
