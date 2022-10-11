@@ -58,7 +58,7 @@ on:
     outputs:
       DEPLOY_STATUS:
         description: "DEPLOY_STATUS might be: error, failure, success"
-        value: ${{ jobs.monitor-deployment.outputs.DEPLOY_STATUS }}
+        value: ${{ jobs.check-deploy-status.outputs.DEPLOY_STATUS }}
 
 concurrency:
   group: ${{ github.workflow }}-${{ inputs.CLUSTER }}
@@ -213,7 +213,7 @@ jobs:
         with:
           token: ${{ github.token }}
           # error, failure, in_progress, queued, pending, success, (inactive)
-          initial-status: ${{ steps.map-github-env.outputs.DEPLOY_STATUS }}
+          initial-status: ${{ steps.check-deploy-status.outputs.DEPLOY_STATUS }}
           auto-inactive: false
           task: deploy-${{ inputs.CLUSTER }}-${{ inputs.IMAGE_SHA }}
           # Use log-url since JIRA does not display environment-url
@@ -254,7 +254,7 @@ jobs:
             DEPLOY_STATUS="✅ ${DEPLOY_STATUS}"
             DEPLOY_COLOR=2cbe4e
           elif [ "${DEPLOY_STATUS}" == "failure" ]; then
-            DEPLOY_STATUS="⚠️ ${DEPLOY_STATUS}"
+            DEPLOY_STATUS="❗${DEPLOY_STATUS}"
             DEPLOY_COLOR=ffc107
           elif [ "${DEPLOY_STATUS}" == "error" ]; then
             DEPLOY_STATUS="❌ ${DEPLOY_STATUS}"
