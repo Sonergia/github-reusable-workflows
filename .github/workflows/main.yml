@@ -67,7 +67,7 @@ concurrency:
 
 jobs:
   check-context:
-    uses: Sonergia/github-reusable-workflows/.github/workflows/check-context.yml@delivery
+    uses: Sonergia/github-reusable-workflows/.github/workflows/check-context.yml@2.x
     with:
       CLUSTER: ${{ inputs.CLUSTER }}
       SERVICES: ${{ inputs.SERVICES }}
@@ -89,7 +89,7 @@ jobs:
   deploy-common:
     needs:
       - check-context
-    uses: Sonergia/github-reusable-workflows/.github/workflows/deploy-common.yml@delivery
+    uses: Sonergia/github-reusable-workflows/.github/workflows/deploy-common.yml@2.x
     with:
       AWS_DEFAULT_REGION: ${{ inputs.AWS_DEFAULT_REGION }}
       CLUSTER: ${{ needs.check-context.outputs.CLUSTER }}
@@ -103,7 +103,7 @@ jobs:
     needs:
       - check-context
       - deploy-common
-    uses: Sonergia/github-reusable-workflows/.github/workflows/build-docker.yml@delivery
+    uses: Sonergia/github-reusable-workflows/.github/workflows/build-docker.yml@2.x
     if: ${{ inputs.IMAGE_EXISTS == 'false' }}
     with:
       AWS_DEFAULT_REGION: ${{ inputs.AWS_DEFAULT_REGION }}
@@ -122,7 +122,7 @@ jobs:
       - check-context
       - build-docker
       - deploy-common
-    uses: Sonergia/github-reusable-workflows/.github/workflows/deploy-service.yml@delivery
+    uses: Sonergia/github-reusable-workflows/.github/workflows/deploy-service.yml@2.x
     # always() condition avoid this jobs to be skipped if needed jobs are skipped
     if: ${{ always() && needs.build-docker.conclusion != 'failure' }}
     with:

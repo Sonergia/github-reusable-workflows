@@ -163,7 +163,8 @@ jobs:
       - uses: actions/checkout@v3
         with:
           repository: Sonergia/github-reusable-workflows
-          ref: 'delivery' # Only when testing ############## /!\ ##############
+          ref: '2.x'
+          # ref: 'delivery' # Only when testing ############## /!\ ##############
 
       - name: Monitor deployment
         id: monitor-deployment
