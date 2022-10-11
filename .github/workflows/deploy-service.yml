@@ -224,6 +224,81 @@ jobs:
           transient-environment: ${{ inputs.CLUSTER != 'prod' }}
           description: ${{ matrix.service }} (${{ inputs.IMAGE_SHA }} / ${{ inputs.IMAGE_TAG }}) deployed on cluster ${{ inputs.CLUSTER }}
 
+      - name: Login JIRA
+        uses: atlassian/gajira-login@master
+        if: ${{ always() && inputs.NOTIFICATIONS_JIRA == 'true' && inputs.JIRA_CODE != '' && steps.check-deploy-status.outputs.DEPLOY_STATUS == 'success' }}
+        env:
+          JIRA_BASE_URL: https://sonergia.atlassian.net
+          JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+
+      - name: Comment on JIRA issue
+        uses: atlassian/gajira-comment@23b9748b2d2ea1c486bd788daed8b4c00fccf362
+        if: ${{ always() && inputs.NOTIFICATIONS_JIRA == 'true' && inputs.JIRA_CODE != '' && steps.check-deploy-status.outputs.DEPLOY_STATUS == 'success' }}
+        with:
+          issue: ${{ inputs.JIRA_CODE }}
+          comment: |
+            Ticket déployé sur le cluster ${{ steps.string.outputs.uppercase }} (cf Releases):
+              - Url du service: http://${{ matrix.service }}.${{ inputs.CLUSTER }}.ecs
+              - Logs du service: https://app.datadoghq.eu/logs?query=service:cloudwatch%20cluster:${{ inputs.CLUSTER }}%20%40service:${{ matrix.service }}
+
+      - name: Deploy status style
+        id: deploy-status-style
+        if: always()
+        run: |
+          DEPLOY_STATUS=${{ steps.check-deploy-status.outputs.DEPLOY_STATUS }}
+          DEPLOY_COLOR=
+
+          if [ "${DEPLOY_STATUS}" == "success" ]; then
+            DEPLOY_STATUS="✅ ${DEPLOY_STATUS}"
+            DEPLOY_COLOR=2cbe4e
+          elif [ "${DEPLOY_STATUS}" == "failure" ]; then
+            DEPLOY_STATUS="⚠️ ${DEPLOY_STATUS}"
+            DEPLOY_COLOR=ffc107
+          elif [ "${DEPLOY_STATUS}" == "error" ]; then
+            DEPLOY_STATUS="❌ ${DEPLOY_STATUS}"
+            DEPLOY_COLOR=cb2431
+          fi
+
+          echo "::set-output name=DEPLOY_STATUS::${DEPLOY_STATUS}"
+          echo "::set-output name=DEPLOY_COLOR::${DEPLOY_COLOR}"
+
+      # Notify at the end of workflow
+      - name: Notify teams channel
+        uses: djthornton1212/ms-teams-notification@e658184be2a664fae7a9220bb38eb97b0a5946a6
+        if: ${{ always() && inputs.NOTIFICATIONS_TEAMS == 'true' }}
+        with:
+          github-token: ${{ github.token }}
+          ms-teams-webhook-uri: ${{ secrets.MS_TEAMS_WEBHOOK_URI }}
+          notification-summary: Déploiement terminé !
+          notification-color: ${{ steps.deploy-status-style.outputs.DEPLOY_COLOR }}
+          timezone: Europe/Paris
+          view-commit-changes: true
+          view-workflow-run: true
+          view-pull-request: false
+          custom-facts: |
+            - name: Status
+              value: ${{ steps.deploy-status-style.outputs.DEPLOY_STATUS }}
+            - name: Cluster
+              value: ${{ steps.string.outputs.uppercase }}
+            - name: Service
+              value: ${{ matrix.service }}
+            - name: Branche
+              value: ${{ github.server_url }}/${{ github.repository }}/tree/${{ github.ref }}
+            - name: Commit
+              value: ${{ steps.map-github-env.outputs.COMMIT_MESSAGE }}
+            - name: Url du Jira
+              value: https://sonergia.atlassian.net/browse/${{ inputs.JIRA_CODE }}
+            - name: Url du service
+              value: http://${{ matrix.service }}.${{ inputs.CLUSTER }}.ecs
+            - name: Logs du service
+              value: https://app.datadoghq.eu/logs?query=service:cloudwatch%20cluster:${{ inputs.CLUSTER }}%20%40service:${{ matrix.service }}
+          # custom-actions: |
+          #   - name: Url du service
+          #     value: "http://${{ matrix.service }}.${{ inputs.CLUSTER }}.ecs"
+          #   - name: Logs du service
+          #     value: "https://app.datadoghq.eu/logs?query=service:cloudwatch%20cluster:${{ inputs.CLUSTER }}%20%40service:${{ matrix.service }}"
+
       - name: Exit if deploy failed
         run: |
           DEPLOY_STATUS=${{ steps.check-deploy-status.outputs.DEPLOY_STATUS }}
