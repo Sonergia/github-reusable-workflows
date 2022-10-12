@@ -1,23 +1,50 @@
-name: Check context
+name: Check context (ECR, git...)
 
 on:
   workflow_call:
     inputs:
+      AWS_DEFAULT_REGION:
+        required: true
+        type: string
       CLUSTER:
+        required: true
+        type: string
+      SERVICE_NAMESPACE:
         required: true
         type: string
       SERVICES:
         required: true
         type: string
+      IMAGE_NAMES:
+        required: true
+        type: string
+      SHA_SHORT:
+        description: "Git commit SHA short (without 'sha-' prefix)"
+        required: false
+        type: string
+        default: ''
       NOTIFICATIONS_TEAMS:  # booleans must be treated as string
         required: false
         type: string
         default: 'true'
     secrets:
+      AWS_ACCESS_KEY_ID_TF:
+        required: true
+      AWS_SECRET_ACCESS_KEY_TF:
+        required: true
       MS_TEAMS_WEBHOOK_URI:
         required: true
     # Map the workflow outputs to job outputs
     outputs:
+      SHA_SHORT:
+        description: "Define SHA_SHORT from input or current git commit SHA"
+        value: ${{ jobs.check-context.outputs.SHA_SHORT }}
+      IMAGE_SHA:
+        description: "Define IMAGE_SHA from input or current git commit SHA"
+        value: ${{ jobs.check-context.outputs.IMAGE_SHA }}
+      IMAGE_EXISTS:
+        description: "Indicate if Docker image already exists in ECR for current git commit SHA"
+        value: ${{ jobs.check-context.outputs.IMAGE_EXISTS }}
       CLUSTER:
         description: "Cluster name to deploy onto (test, release, prod)"
         value: ${{ jobs.check-context.outputs.CLUSTER }}
@@ -37,27 +64,71 @@ env:
 
 jobs:
   check-context:
-    name: Check git context
+    name: Check context
     runs-on: ubuntu-latest
     timeout-minutes: 1
 
+    # strategy:
+    #   matrix:
+    #     image_name: ${{ fromJson(inputs.IMAGE_NAMES) }}
+
     steps:
       - uses: actions/checkout@v3
+        if: ${{ inputs.SHA_SHORT == '' }}
+
+        # Get commit SHA before checking out reusable workflows
+      - name: Git output SHA short
+        id: git-sha
+        if: always()
+        run: |
+          if [ "${{ inputs.SHA_SHORT }}" != "" ]; then
+            SHA_SHORT=${{ inputs.SHA_SHORT }}
+          else
+            SHA_SHORT=$(git rev-parse --short HEAD)
+          fi
+
+          if [ -z ${SHA_SHORT} ]; then
+            echo "::error title=Check docker image::Image SHA can not be empty"
+            exit 1
+          fi
+
+          echo "::notice title=Check docker image::GIT SHA output value is '${SHA_SHORT}'"
+          echo "::set-output name=sha_short::${SHA_SHORT}"
+          echo "::set-output name=image_sha::sha-${SHA_SHORT}"
 
       # Get commit message before checking out reusable workflows
-      - name: Get commit message
-        id: get-commit
+      - name: Git output commit message
+        id: git-commit
         if: always()
         run: |
           COMMIT_MESSAGE=$(git log -1 --pretty=format:"%s")
           echo "::set-output name=COMMIT_MESSAGE::${COMMIT_MESSAGE}"
 
-      # Checkout reusable workflows to get bash scripts
+      # Checkout reusable workflow to get bash scripts
       - uses: actions/checkout@v3
         with:
           repository: Sonergia/github-reusable-workflows
           ref: '2.x'
           # ref: 'delivery' # Only when testing ############## /!\ ##############
+
+      - name: Install packages (jq)
+        run: |
+          sudo apt-get -y install jq
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_TF }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_TF }}
+          aws-region: ${{ inputs.AWS_DEFAULT_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Check if image SHA tag and release tag already exists in ECR, add release tag otherwise
+        id: check-image-ecr
+        run: ./.github/scripts/check-image-ecr.sh ${{ inputs.SERVICE_NAMESPACE }} "${{ join(fromJson(inputs.IMAGE_NAMES), ' ') }}" ${{ steps.git-sha.outputs.IMAGE_SHA }}
 
       - name: Set context from git and inputs
         id: set-context
@@ -92,11 +163,14 @@ jobs:
             - name: Branche
               value: ${{ github.server_url }}/${{ github.repository }}/tree/${{ github.ref }}
             - name: Commit
-              value: ${{ steps.get-commit.outputs.COMMIT_MESSAGE }}
+              value: ${{ steps.git-commit.outputs.COMMIT_MESSAGE }}
             - name: Url du Jira
               value: https://sonergia.atlassian.net/browse/${{ steps.set-context.outputs.JIRA_CODE }}
 
     outputs:
+      SHA_SHORT: ${{ steps.git-sha.outputs.sha_short }}
+      IMAGE_SHA: ${{ steps.git-sha.outputs.image_sha }}
+      IMAGE_EXISTS: ${{ steps.check-image-ecr.outputs.exists }}
       CLUSTER: ${{ steps.set-context.outputs.CLUSTER }}
       JIRA_CODE: ${{ steps.set-context.outputs.JIRA_CODE }}
       IMAGE_TAG: ${{ steps.set-context.outputs.IMAGE_TAG }}

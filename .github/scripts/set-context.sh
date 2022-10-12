@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# exit when any command fails
+set -e
+
 # echo "-------------- DEBUG ENV --------------"
 # echo "GITHUB_EVENT_NAME => $GITHUB_EVENT_NAME"
 # echo "GITHUB_JOB        => $GITHUB_JOB"

@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# exit when any command fails
+set -e
+
 # Notes:
 # A successful deployment is completed after about 5min
 # A failed deployment is roll out by this script after about 10 min

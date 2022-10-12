@@ -57,10 +57,20 @@ jobs:
         service: ${{ fromJson(inputs.SERVICES) }}
 
     steps:
-      - uses: actions/checkout@v3
-
       - name: Check required inputs
         run: |
+          if [ -z "${{ inputs.AWS_DEFAULT_REGION }}" ]; then
+            echo "::error title=Deploy common::Input AWS_DEFAULT_REGION is empty"
+            exit 1
+          fi
+          if [ -z "${{ inputs.CLUSTER }}" ]; then
+            echo "::error title=Deploy common::Input CLUSTER is empty"
+            exit 1
+          fi
+          if [ -z "${{ inputs.SERVICES }}" ]; then
+            echo "::error title=Deploy common::Input SERVICES is empty"
+            exit 1
+          fi
           # Check that at least IMAGE_TAG is provided
           if [ -z "${{ inputs.IMAGE_SHA }}" ]; then
             if [ -z "${{ inputs.IMAGE_TAG }}" ]; then
@@ -68,6 +78,8 @@ jobs:
               exit 1
             fi
           fi
+
+      - uses: actions/checkout@v3
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v1

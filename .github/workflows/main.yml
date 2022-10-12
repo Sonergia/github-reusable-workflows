@@ -24,9 +24,24 @@ on:
       IMAGE_SHA:
         required: true
         type: string
+      IMAGE_TAG:
+        required: true
+        type: string
       IMAGE_EXISTS:   # booleans must be treated as string
         required: true
         type: string
+      CREATE_TAG_LATEST:
+        required: true
+        type: string
+      SHA_SHORT:
+        description: "Git commit SHA short (without 'sha-' prefix)"
+        required: false
+        type: string
+        default: ''
+      JIRA_CODE:
+        required: false
+        type: string
+        default: ''
       DOCKERFILE_BUILD_CONTEXT:
         required: false
         type: string
@@ -66,14 +81,20 @@ concurrency:
 # env: ...
 
 jobs:
-  check-context:
-    uses: Sonergia/github-reusable-workflows/.github/workflows/check-context.yml@2.x
-    with:
-      CLUSTER: ${{ inputs.CLUSTER }}
-      SERVICES: ${{ inputs.SERVICES }}
-      NOTIFICATIONS_TEAMS: ${{ inputs.NOTIFICATIONS_TEAMS }}
-    secrets:
-      MS_TEAMS_WEBHOOK_URI: ${{ secrets.MS_TEAMS_WEBHOOK_URI }}
+  # check-context:
+  #   uses: Sonergia/github-reusable-workflows/.github/workflows/check-context.yml@2.x
+  #   with:
+  #     AWS_DEFAULT_REGION: ${{ inputs.AWS_DEFAULT_REGION }}
+  #     CLUSTER: ${{ inputs.CLUSTER }}
+  #     SERVICE_NAMESPACE: ${{ inputs.SERVICE_NAMESPACE }}
+  #     SERVICES: ${{ inputs.SERVICES }}
+  #     IMAGE_NAMES: ${{ inputs.IMAGE_NAMES }}
+  #     SHA_SHORT: ${{ inputs.SHA_SHORT }}
+  #     NOTIFICATIONS_TEAMS: ${{ inputs.NOTIFICATIONS_TEAMS }}
+  #   secrets:
+  #     AWS_ACCESS_KEY_ID_TF: ${{ secrets.AWS_ACCESS_KEY_ID_TF }}
+  #     AWS_SECRET_ACCESS_KEY_TF: ${{ secrets.AWS_SECRET_ACCESS_KEY_TF }}
+  #     MS_TEAMS_WEBHOOK_URI: ${{ secrets.MS_TEAMS_WEBHOOK_URI }}
 
   # # Application software dedicated build process
   # build-application:
@@ -87,12 +108,10 @@ jobs:
 
   # Terraform deploy common (with reusable workflows)
   deploy-common:
-    needs:
-      - check-context
     uses: Sonergia/github-reusable-workflows/.github/workflows/deploy-common.yml@2.x
     with:
       AWS_DEFAULT_REGION: ${{ inputs.AWS_DEFAULT_REGION }}
-      CLUSTER: ${{ needs.check-context.outputs.CLUSTER }}
+      CLUSTER: ${{ inputs.CLUSTER }}
     secrets:
       AWS_ACCESS_KEY_ID_TF: ${{ secrets.AWS_ACCESS_KEY_ID_TF }}
       AWS_SECRET_ACCESS_KEY_TF: ${{ secrets.AWS_SECRET_ACCESS_KEY_TF }}
@@ -101,7 +120,6 @@ jobs:
   # Build and push docker image (with reusable workflows)
   build-docker:
     needs:
-      - check-context
       - deploy-common
     uses: Sonergia/github-reusable-workflows/.github/workflows/build-docker.yml@2.x
     if: ${{ inputs.IMAGE_EXISTS == 'false' }}
@@ -109,8 +127,8 @@ jobs:
       AWS_DEFAULT_REGION: ${{ inputs.AWS_DEFAULT_REGION }}
       SERVICE_NAMESPACE: ${{ inputs.SERVICE_NAMESPACE }}
       IMAGE_NAMES: ${{ inputs.IMAGE_NAMES }}
-      IMAGE_TAG: ${{ needs.check-context.outputs.IMAGE_TAG }}
-      CREATE_TAG_LATEST: ${{ needs.check-context.outputs.CREATE_TAG_LATEST }}
+      IMAGE_TAG: ${{ inputs.IMAGE_TAG }}
+      CREATE_TAG_LATEST: ${{ inputs.CREATE_TAG_LATEST }}
       DOCKERFILE_BUILD_CONTEXT: ${{ inputs.DOCKERFILE_BUILD_CONTEXT }}
     secrets:
       AWS_ACCESS_KEY_ID_TF: ${{ secrets.AWS_ACCESS_KEY_ID_TF }}
@@ -119,7 +137,6 @@ jobs:
   # Terraform deploy service (with reusable workflows)
   deploy-service:
     needs:
-      - check-context
       - build-docker
       - deploy-common
     uses: Sonergia/github-reusable-workflows/.github/workflows/deploy-service.yml@2.x
@@ -127,13 +144,13 @@ jobs:
     if: |
       always() &&
       (inputs.IMAGE_EXISTS == 'false' && needs.build-docker.result == 'success') ||
-      (inputs.IMAGE_EXISTS == 'true' && needs.build-docker.result == 'skipped') }}
+      (inputs.IMAGE_EXISTS == 'true' && needs.build-docker.result == 'skipped')
     with:
       AWS_DEFAULT_REGION: ${{ inputs.AWS_DEFAULT_REGION }}
-      CLUSTER: ${{ needs.check-context.outputs.CLUSTER }}
+      CLUSTER: ${{ inputs.CLUSTER }}
       SERVICES: ${{ inputs.SERVICES }}
       IMAGE_SHA: ${{ inputs.IMAGE_SHA }}
-      IMAGE_TAG: ${{ needs.check-context.outputs.IMAGE_TAG }}
+      IMAGE_TAG: ${{ inputs.IMAGE_TAG }}
       FORCE_DEPLOYMENT: ${{ inputs.FORCE_DEPLOYMENT }}
     secrets:
       AWS_ACCESS_KEY_ID_TF: ${{ secrets.AWS_ACCESS_KEY_ID_TF }}
@@ -143,7 +160,6 @@ jobs:
   # Deploy status of services
   deploy-status:
     needs:
-      - check-context
       - build-docker
       - deploy-common
       - deploy-service
@@ -151,11 +167,11 @@ jobs:
     # always() condition avoid this jobs to be skipped if needed jobs are skipped
     if: always()
     with:
-      CLUSTER: ${{ needs.check-context.outputs.CLUSTER }}
+      CLUSTER: ${{ inputs.CLUSTER }}
       SERVICES: ${{ inputs.SERVICES }}
       IMAGE_SHA: ${{ inputs.IMAGE_SHA }}
-      IMAGE_TAG: ${{ needs.check-context.outputs.IMAGE_TAG }}
-      JIRA_CODE: ${{ needs.check-context.outputs.JIRA_CODE }}
+      IMAGE_TAG: ${{ inputs.IMAGE_TAG }}
+      JIRA_CODE: ${{ inputs.JIRA_CODE }}
       NOTIFICATIONS_JIRA: ${{ inputs.NOTIFICATIONS_JIRA }}
       NOTIFICATIONS_TEAMS: ${{ inputs.NOTIFICATIONS_TEAMS }}
       DEPLOY_STATUS: ${{ needs.deploy-service.outputs.DEPLOY_STATUS }}
