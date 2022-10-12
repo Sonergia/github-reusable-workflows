@@ -113,13 +113,14 @@ else
     fi
 fi
 
-# Status must be one of:
-# error, failure, inactive, in_progress, queued, pending, success
-# success: 2cbe4e, failure: ffc107, error: cb2431
+# Github statuses are: error, failure, inactive, in_progress, queued, pending, success
 if [ ${SERVICE_DEPLOYMENT_ERROR} == 1 ]; then
-    echo "::set-output name=DEPLOY_STATUS::error"
+    DEPLOY_STATUS=error
 elif [ ${SERVICE_DEPLOYMENT_ROLLBACK} == 1 ]; then
-    echo "::set-output name=DEPLOY_STATUS::failure"
+    DEPLOY_STATUS=failure
 else
-    echo "::set-output name=DEPLOY_STATUS::success"
+    DEPLOY_STATUS=success
 fi
+
+echo "::notice title=Monitor deployment::Deploy status is ${DEPLOY_STATUS}"
+echo "::set-output name=DEPLOY_STATUS::${DEPLOY_STATUS}"

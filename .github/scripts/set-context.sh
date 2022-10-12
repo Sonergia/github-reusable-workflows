@@ -70,7 +70,6 @@ function getJiraCodeFromBranch {
 
 # Start script
 CREATE_TAG_LATEST="false"
-COMMIT_MESSAGE=$(git log -1 --pretty=format:"%s")
 
 # Manual case uses image static tag
 if  [ ${GITHUB_EVENT_NAME} == "workflow_dispatch" ]; then
@@ -114,4 +113,3 @@ echo "::set-output name=CLUSTER::${CLUSTER}"
 echo "::set-output name=JIRA_CODE::${JIRA_CODE}"
 echo "::set-output name=IMAGE_TAG::${IMAGE_TAG}"
 echo "::set-output name=CREATE_TAG_LATEST::${CREATE_TAG_LATEST}"
-echo "::set-output name=COMMIT_MESSAGE::${COMMIT_MESSAGE}"

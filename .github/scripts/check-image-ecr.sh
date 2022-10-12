@@ -43,6 +43,8 @@ if [ ! -z "${IMAGE_SHA_EXISTS}" ]; then
       echo "::notice title=Check docker image::Image tag release '${IMAGE_TAG}' has been added to ${SERVICE_NAMESPACE}/${IMAGE_NAME} '${IMAGE_SHA}' image"
     fi
   fi
+else
+  echo "::notice title=Check docker image::Image tag SHA '${IMAGE_SHA}' does not exists in ${SERVICE_NAMESPACE}/${IMAGE_NAME}"
 fi
 
 echo "::set-output name=exists::${IMAGE_EXISTS}"

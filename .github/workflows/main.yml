@@ -124,21 +124,42 @@ jobs:
       - deploy-common
     uses: Sonergia/github-reusable-workflows/.github/workflows/deploy-service.yml@2.x
     # always() condition avoid this jobs to be skipped if needed jobs are skipped
-    if: ${{ always() && needs.build-docker.conclusion != 'failure' }}
+    if: |
+      always() &&
+      (inputs.IMAGE_EXISTS == 'false' && needs.build-docker.result == 'success') ||
+      (inputs.IMAGE_EXISTS == 'true' && needs.build-docker.result == 'skipped') }}
     with:
       AWS_DEFAULT_REGION: ${{ inputs.AWS_DEFAULT_REGION }}
       CLUSTER: ${{ needs.check-context.outputs.CLUSTER }}
       SERVICES: ${{ inputs.SERVICES }}
       IMAGE_SHA: ${{ inputs.IMAGE_SHA }}
       IMAGE_TAG: ${{ needs.check-context.outputs.IMAGE_TAG }}
-      JIRA_CODE: ${{ needs.check-context.outputs.JIRA_CODE }}
       FORCE_DEPLOYMENT: ${{ inputs.FORCE_DEPLOYMENT }}
-      NOTIFICATIONS_JIRA: ${{ inputs.NOTIFICATIONS_JIRA }}
-      NOTIFICATIONS_TEAMS: ${{ inputs.NOTIFICATIONS_TEAMS }}
     secrets:
       AWS_ACCESS_KEY_ID_TF: ${{ secrets.AWS_ACCESS_KEY_ID_TF }}
       AWS_SECRET_ACCESS_KEY_TF: ${{ secrets.AWS_SECRET_ACCESS_KEY_TF }}
       GH_TF_SSH_KEY: ${{ secrets.GH_TF_SSH_KEY }}
+
+  # Deploy status of services
+  deploy-status:
+    needs:
+      - check-context
+      - build-docker
+      - deploy-common
+      - deploy-service
+    uses: Sonergia/github-reusable-workflows/.github/workflows/deploy-status.yml@2.x
+    # always() condition avoid this jobs to be skipped if needed jobs are skipped
+    if: always()
+    with:
+      CLUSTER: ${{ needs.check-context.outputs.CLUSTER }}
+      SERVICES: ${{ inputs.SERVICES }}
+      IMAGE_SHA: ${{ inputs.IMAGE_SHA }}
+      IMAGE_TAG: ${{ needs.check-context.outputs.IMAGE_TAG }}
+      JIRA_CODE: ${{ needs.check-context.outputs.JIRA_CODE }}
+      NOTIFICATIONS_JIRA: ${{ inputs.NOTIFICATIONS_JIRA }}
+      NOTIFICATIONS_TEAMS: ${{ inputs.NOTIFICATIONS_TEAMS }}
+      DEPLOY_STATUS: ${{ needs.deploy-service.outputs.DEPLOY_STATUS }}
+    secrets:
       MS_TEAMS_WEBHOOK_URI: ${{ secrets.MS_TEAMS_WEBHOOK_URI }}
       JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
       JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}

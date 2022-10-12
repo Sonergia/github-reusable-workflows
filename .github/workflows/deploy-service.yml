@@ -20,10 +20,6 @@ on:
         required: false
         type: string
         default: null
-      JIRA_CODE:
-        required: false
-        type: string
-        default: ''
       # FORCE_DEPLOYMENT is not bool because output transforms it in text
       FORCE_DEPLOYMENT:
         required: false
@@ -33,14 +29,6 @@ on:
         required: false
         type: string
         default: null
-      NOTIFICATIONS_TEAMS:  # booleans must be treated as string
-        required: false
-        type: string
-        default: 'true'
-      NOTIFICATIONS_JIRA:
-        required: false
-        type: string
-        default: 'true'
     secrets:
       AWS_ACCESS_KEY_ID_TF:
         required: true
@@ -48,17 +36,11 @@ on:
         required: true
       GH_TF_SSH_KEY:
         required: true
-      MS_TEAMS_WEBHOOK_URI:
-        required: true
-      JIRA_USER_EMAIL:
-        required: true
-      JIRA_API_TOKEN:
-        required: true
     # Map the workflow outputs to job outputs
     outputs:
       DEPLOY_STATUS:
         description: "DEPLOY_STATUS might be: error, failure, success"
-        value: ${{ jobs.check-deploy-status.outputs.DEPLOY_STATUS }}
+        value: ${{ jobs.tf-service.outputs.DEPLOY_STATUS }}
 
 concurrency:
   group: deploy-service-${{ github.workflow }}-${{ inputs.CLUSTER }}
@@ -69,11 +51,6 @@ jobs:
     name: Tf '${{ matrix.service }}' on cluster '${{ inputs.CLUSTER }}'
     runs-on: [self-hosted, "${{ inputs.CLUSTER }}"]
     timeout-minutes: 20
-
-    # For deployment-action and checkout
-    permissions:
-      contents: read
-      deployments: write
 
     strategy:
       matrix:
@@ -159,14 +136,6 @@ jobs:
 
       #--------------------------------------------------------
 
-      # Get commit message before checking out github-reusable-workflows
-      - name: Get commit message
-        id: get-commit
-        if: always()
-        run: |
-          COMMIT_MESSAGE=$(git log -1 --pretty=format:"%s")
-          echo "::set-output name=COMMIT_MESSAGE::${COMMIT_MESSAGE}"
-
       # Checkout reusable workflow to get bash scripts
       - uses: actions/checkout@v3
         with:
@@ -179,134 +148,5 @@ jobs:
         # if: ${{ steps.tf-apply-service.conclusion != 'failure' }}
         run: ./.github/scripts/monitor-deployment.sh ${{ inputs.CLUSTER }} ${{ matrix.service }}
 
-      - name: Check deploy status
-        id: check-deploy-status
-        if: always()
-        run: |
-          DEPLOY_STATUS=${{ steps.monitor-deployment.outputs.DEPLOY_STATUS }}
-          if [ -z "${DEPLOY_STATUS}" ]; then
-            DEPLOY_STATUS=error
-          fi
-          echo "::set-output name=DEPLOY_STATUS::${DEPLOY_STATUS}"
-
-      - name: Map vars with github environment
-        id: map-github-env
-        if: always()
-        run: |
-          # Available env: development, testing, staging, or production
-          GITHUB_ENVIRONMENT=${{ inputs.CLUSTER }}
-          if [ "${{ inputs.CLUSTER }}" == "release" ]; then
-            GITHUB_ENVIRONMENT="staging"
-          fi
-          echo "::set-output name=GITHUB_ENVIRONMENT::${GITHUB_ENVIRONMENT}"
-
-      - name: Change string case function
-        id: string
-        uses: ASzc/change-string-case-action@v2
-        if: always()
-        with:
-          string: ${{ inputs.CLUSTER }}
-
-      - name: Create GitHub deployment
-        id: github-deployment
-        uses: chrnorm/deployment-action@v2
-        if: ${{ always() && inputs.NOTIFICATIONS_JIRA == 'true' }}
-        with:
-          token: ${{ github.token }}
-          # error, failure, in_progress, queued, pending, success, (inactive)
-          initial-status: ${{ steps.check-deploy-status.outputs.DEPLOY_STATUS }}
-          auto-inactive: false
-          task: deploy-${{ inputs.CLUSTER }}-${{ inputs.IMAGE_SHA }}
-          # Use log-url since JIRA does not display environment-url
-          # environment-url: http://${{ matrix.service }}.${{ inputs.CLUSTER }}.ecs
-          log-url: http://${{ matrix.service }}.${{ inputs.CLUSTER }}.ecs
-          # log-url: https://app.datadoghq.eu/logs?query=service:cloudwatch%20cluster:${{ inputs.CLUSTER }}%20%40service:${{ matrix.service }}
-          environment: ${{ steps.map-github-env.outputs.GITHUB_ENVIRONMENT }}
-          # Specifies if the given environment is specific to the deployment and will no longer exist at some point in the future.
-          transient-environment: ${{ inputs.CLUSTER != 'prod' }}
-          description: ${{ matrix.service }} (${{ inputs.IMAGE_SHA }} / ${{ inputs.IMAGE_TAG }}) deployed on cluster ${{ inputs.CLUSTER }}
-
-      - name: Login JIRA
-        uses: atlassian/gajira-login@master
-        if: ${{ always() && inputs.NOTIFICATIONS_JIRA == 'true' && inputs.JIRA_CODE != '' && steps.check-deploy-status.outputs.DEPLOY_STATUS == 'success' }}
-        env:
-          JIRA_BASE_URL: https://sonergia.atlassian.net
-          JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
-          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
-
-      - name: Comment on JIRA issue
-        uses: atlassian/gajira-comment@23b9748b2d2ea1c486bd788daed8b4c00fccf362
-        if: ${{ always() && inputs.NOTIFICATIONS_JIRA == 'true' && inputs.JIRA_CODE != '' && steps.check-deploy-status.outputs.DEPLOY_STATUS == 'success' }}
-        with:
-          issue: ${{ inputs.JIRA_CODE }}
-          comment: |
-            Ticket déployé sur le cluster ${{ steps.string.outputs.uppercase }} (cf Releases):
-              - Url du service: http://${{ matrix.service }}.${{ inputs.CLUSTER }}.ecs
-              - Logs du service: https://app.datadoghq.eu/logs?query=service:cloudwatch%20cluster:${{ inputs.CLUSTER }}%20%40service:${{ matrix.service }}
-
-      - name: Deploy status style
-        id: deploy-status-style
-        if: ${{ always() && inputs.NOTIFICATIONS_TEAMS == 'true' }}
-        run: |
-          DEPLOY_STATUS=${{ steps.check-deploy-status.outputs.DEPLOY_STATUS }}
-          DEPLOY_COLOR=
-
-          if [ "${DEPLOY_STATUS}" == "success" ]; then
-            DEPLOY_STATUS="✅ ${DEPLOY_STATUS}"
-            DEPLOY_COLOR=2cbe4e
-          elif [ "${DEPLOY_STATUS}" == "failure" ]; then
-            DEPLOY_STATUS="❗${DEPLOY_STATUS}"
-            DEPLOY_COLOR=ffc107
-          elif [ "${DEPLOY_STATUS}" == "error" ]; then
-            DEPLOY_STATUS="❌ ${DEPLOY_STATUS}"
-            DEPLOY_COLOR=cb2431
-          fi
-
-          echo "::set-output name=DEPLOY_STATUS::${DEPLOY_STATUS}"
-          echo "::set-output name=DEPLOY_COLOR::${DEPLOY_COLOR}"
-
-      # Notify at the end of workflow
-      - name: Notify teams channel
-        uses: djthornton1212/ms-teams-notification@e658184be2a664fae7a9220bb38eb97b0a5946a6
-        if: ${{ always() && inputs.NOTIFICATIONS_TEAMS == 'true' }}
-        with:
-          github-token: ${{ github.token }}
-          ms-teams-webhook-uri: ${{ secrets.MS_TEAMS_WEBHOOK_URI }}
-          notification-summary: Déploiement terminé !
-          notification-color: ${{ steps.deploy-status-style.outputs.DEPLOY_COLOR }}
-          timezone: Europe/Paris
-          view-commit-changes: true
-          view-workflow-run: true
-          view-pull-request: false
-          custom-facts: |
-            - name: Status
-              value: ${{ steps.deploy-status-style.outputs.DEPLOY_STATUS }}
-            - name: Cluster
-              value: ${{ steps.string.outputs.uppercase }}
-            - name: Service
-              value: ${{ matrix.service }}
-            - name: Branche
-              value: ${{ github.server_url }}/${{ github.repository }}/tree/${{ github.ref }}
-            - name: Commit
-              value: ${{ steps.get-commit.outputs.COMMIT_MESSAGE }}
-            - name: Url du Jira
-              value: https://sonergia.atlassian.net/browse/${{ inputs.JIRA_CODE }}
-            - name: Url du service
-              value: http://${{ matrix.service }}.${{ inputs.CLUSTER }}.ecs
-            - name: Logs du service
-              value: https://app.datadoghq.eu/logs?query=service:cloudwatch%20cluster:${{ inputs.CLUSTER }}%20%40service:${{ matrix.service }}
-          # custom-actions: |
-          #   - name: Url du service
-          #     value: "http://${{ matrix.service }}.${{ inputs.CLUSTER }}.ecs"
-          #   - name: Logs du service
-          #     value: "https://app.datadoghq.eu/logs?query=service:cloudwatch%20cluster:${{ inputs.CLUSTER }}%20%40service:${{ matrix.service }}"
-
-      - name: Exit if deploy failed
-        run: |
-          DEPLOY_STATUS=${{ steps.check-deploy-status.outputs.DEPLOY_STATUS }}
-          if [ ${DEPLOY_STATUS} != 'success' ]; then
-            exit 1
-          fi
-
     outputs:
-      DEPLOY_STATUS: ${{ steps.check-deploy-status.outputs.DEPLOY_STATUS }}
+      DEPLOY_STATUS: ${{ steps.monitor-deployment.outputs.DEPLOY_STATUS }}

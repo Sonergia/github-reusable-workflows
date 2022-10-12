@@ -42,7 +42,17 @@ jobs:
     timeout-minutes: 1
 
     steps:
-      # Checkout reusable workflow to get bash scripts
+      - uses: actions/checkout@v3
+
+      # Get commit message before checking out reusable workflows
+      - name: Get commit message
+        id: get-commit
+        if: always()
+        run: |
+          COMMIT_MESSAGE=$(git log -1 --pretty=format:"%s")
+          echo "::set-output name=COMMIT_MESSAGE::${COMMIT_MESSAGE}"
+
+      # Checkout reusable workflows to get bash scripts
       - uses: actions/checkout@v3
         with:
           repository: Sonergia/github-reusable-workflows
@@ -82,7 +92,7 @@ jobs:
             - name: Branche
               value: ${{ github.server_url }}/${{ github.repository }}/tree/${{ github.ref }}
             - name: Commit
-              value: ${{ steps.set-context.outputs.COMMIT_MESSAGE }}
+              value: ${{ steps.get-commit.outputs.COMMIT_MESSAGE }}
             - name: Url du Jira
               value: https://sonergia.atlassian.net/browse/${{ steps.set-context.outputs.JIRA_CODE }}
 
