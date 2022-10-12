@@ -112,7 +112,7 @@ if [ -z ${CLUSTER} ] || [ -z ${IMAGE_TAG} ]; then
     exit 1
 fi
 
-echo "::set-output name=CLUSTER::${CLUSTER}"
-echo "::set-output name=JIRA_CODE::${JIRA_CODE}"
-echo "::set-output name=IMAGE_TAG::${IMAGE_TAG}"
-echo "::set-output name=CREATE_TAG_LATEST::${CREATE_TAG_LATEST}"
+echo "CLUSTER=${CLUSTER}" >> ${GITHUB_OUTPUT}
+echo "JIRA_CODE=${JIRA_CODE}" >> ${GITHUB_OUTPUT}
+echo "IMAGE_TAG=${IMAGE_TAG}" >> ${GITHUB_OUTPUT}
+echo "CREATE_TAG_LATEST=${CREATE_TAG_LATEST}" >> ${GITHUB_OUTPUT}

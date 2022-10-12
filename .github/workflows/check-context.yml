@@ -93,8 +93,8 @@ jobs:
           fi
 
           echo "::notice title=Check docker image::GIT SHA output value is '${SHA_SHORT}'"
-          echo "::set-output name=sha_short::${SHA_SHORT}"
-          echo "::set-output name=image_sha::sha-${SHA_SHORT}"
+          echo "SHA_SHORT=${SHA_SHORT}" >> ${GITHUB_OUTPUT}
+          echo "IMAGE_SHA=sha-${SHA_SHORT}" >> ${GITHUB_OUTPUT}
 
       # Get commit message before checking out reusable workflows
       - name: Git output commit message
@@ -102,7 +102,7 @@ jobs:
         if: always()
         run: |
           COMMIT_MESSAGE=$(git log -1 --pretty=format:"%s")
-          echo "::set-output name=COMMIT_MESSAGE::${COMMIT_MESSAGE}"
+          echo "COMMIT_MESSAGE=${COMMIT_MESSAGE}" >> ${GITHUB_OUTPUT}
 
       # Checkout reusable workflow to get bash scripts
       - uses: actions/checkout@v3
@@ -168,9 +168,9 @@ jobs:
               value: https://sonergia.atlassian.net/browse/${{ steps.set-context.outputs.JIRA_CODE }}
 
     outputs:
-      SHA_SHORT: ${{ steps.git-sha.outputs.sha_short }}
-      IMAGE_SHA: ${{ steps.git-sha.outputs.image_sha }}
-      IMAGE_EXISTS: ${{ steps.check-image-ecr.outputs.exists }}
+      SHA_SHORT: ${{ steps.git-sha.outputs.SHA_SHORT }}
+      IMAGE_SHA: ${{ steps.git-sha.outputs.IMAGE_SHA }}
+      IMAGE_EXISTS: ${{ steps.check-image-ecr.outputs.IMAGE_EXISTS }}
       CLUSTER: ${{ steps.set-context.outputs.CLUSTER }}
       JIRA_CODE: ${{ steps.set-context.outputs.JIRA_CODE }}
       IMAGE_TAG: ${{ steps.set-context.outputs.IMAGE_TAG }}

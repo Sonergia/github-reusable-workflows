@@ -72,14 +72,14 @@ jobs:
             echo "::warning title=Deploy status::DEPLOY_STATUS input is empty, defaults to 'error'"
             DEPLOY_STATUS=error
           fi
-          echo "::set-output name=DEPLOY_STATUS::${DEPLOY_STATUS}"
+          echo "DEPLOY_STATUS=${DEPLOY_STATUS}" >> ${GITHUB_OUTPUT}
 
       - name: Get commit message
         id: get-commit
         if: always()
         run: |
           COMMIT_MESSAGE=$(git log -1 --pretty=format:"%s")
-          echo "::set-output name=COMMIT_MESSAGE::${COMMIT_MESSAGE}"
+          echo "COMMIT_MESSAGE=${COMMIT_MESSAGE}" >> ${GITHUB_OUTPUT}
 
       - name: Map vars with github environment
         id: map-github-env
@@ -90,7 +90,7 @@ jobs:
           if [ "${{ inputs.CLUSTER }}" == "release" ]; then
             GITHUB_ENVIRONMENT="staging"
           fi
-          echo "::set-output name=GITHUB_ENVIRONMENT::${GITHUB_ENVIRONMENT}"
+          echo "GITHUB_ENVIRONMENT=${GITHUB_ENVIRONMENT}" >> ${GITHUB_OUTPUT}
 
       - name: Change string case function
         id: string
@@ -154,8 +154,8 @@ jobs:
             DEPLOY_COLOR=cb2431
           fi
 
-          echo "::set-output name=DEPLOY_STATUS::${DEPLOY_STATUS}"
-          echo "::set-output name=DEPLOY_COLOR::${DEPLOY_COLOR}"
+          echo "DEPLOY_STATUS=${DEPLOY_STATUS}" >> ${GITHUB_OUTPUT}
+          echo "DEPLOY_COLOR=${DEPLOY_COLOR}" >> ${GITHUB_OUTPUT}
 
       # Notify at the end of workflow
       - name: Notify teams channel

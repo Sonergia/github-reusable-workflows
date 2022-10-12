@@ -126,4 +126,4 @@ else
 fi
 
 echo "::notice title=Monitor deployment::Deploy status is ${DEPLOY_STATUS}"
-echo "::set-output name=DEPLOY_STATUS::${DEPLOY_STATUS}"
+echo "DEPLOY_STATUS=${DEPLOY_STATUS}" >> ${GITHUB_OUTPUT}

@@ -52,4 +52,4 @@ for IMAGE_NAME in ${IMAGE_NAMES_LIST}; do
   fi
 done
 
-echo "::set-output name=exists::${IMAGE_EXISTS}"
+echo "IMAGE_EXISTS=${IMAGE_EXISTS}" >> ${GITHUB_OUTPUT}

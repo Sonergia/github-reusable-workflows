@@ -119,7 +119,7 @@ jobs:
             BUILD_CONTEXT=${{ inputs.DOCKERFILE_BUILD_CONTEXT }}/${{ matrix.image_name }}
           fi
 
-          echo "::set-output name=BUILD_CONTEXT::${BUILD_CONTEXT}"
+          echo "BUILD_CONTEXT=${BUILD_CONTEXT}" >> ${GITHUB_OUTPUT}
 
       - name: Build and push Docker images
         id: build-image
