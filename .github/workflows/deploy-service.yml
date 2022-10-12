@@ -159,6 +159,14 @@ jobs:
 
       #--------------------------------------------------------
 
+      # Get commit message before checking out github-reusable-workflows
+      - name: Get commit message
+        id: get-commit
+        if: always()
+        run: |
+          COMMIT_MESSAGE=$(git log -1 --pretty=format:"%s")
+          echo "::set-output name=COMMIT_MESSAGE::${COMMIT_MESSAGE}"
+
       # Checkout reusable workflow to get bash scripts
       - uses: actions/checkout@v3
         with:
@@ -176,11 +184,9 @@ jobs:
         if: always()
         run: |
           DEPLOY_STATUS=${{ steps.monitor-deployment.outputs.DEPLOY_STATUS }}
-
           if [ -z "${DEPLOY_STATUS}" ]; then
             DEPLOY_STATUS=error
           fi
-
           echo "::set-output name=DEPLOY_STATUS::${DEPLOY_STATUS}"
 
       - name: Map vars with github environment
@@ -189,15 +195,10 @@ jobs:
         run: |
           # Available env: development, testing, staging, or production
           GITHUB_ENVIRONMENT=${{ inputs.CLUSTER }}
-
           if [ "${{ inputs.CLUSTER }}" == "release" ]; then
             GITHUB_ENVIRONMENT="staging"
           fi
-
-          COMMIT_MESSAGE=$(git log -1 --pretty=format:"%s")
-
           echo "::set-output name=GITHUB_ENVIRONMENT::${GITHUB_ENVIRONMENT}"
-          echo "::set-output name=COMMIT_MESSAGE::${COMMIT_MESSAGE}"
 
       - name: Change string case function
         id: string
@@ -245,7 +246,7 @@ jobs:
 
       - name: Deploy status style
         id: deploy-status-style
-        if: always()
+        if: ${{ always() && inputs.NOTIFICATIONS_TEAMS == 'true' }}
         run: |
           DEPLOY_STATUS=${{ steps.check-deploy-status.outputs.DEPLOY_STATUS }}
           DEPLOY_COLOR=
@@ -287,7 +288,7 @@ jobs:
             - name: Branche
               value: ${{ github.server_url }}/${{ github.repository }}/tree/${{ github.ref }}
             - name: Commit
-              value: ${{ steps.map-github-env.outputs.COMMIT_MESSAGE }}
+              value: ${{ steps.get-commit.outputs.COMMIT_MESSAGE }}
             - name: Url du Jira
               value: https://sonergia.atlassian.net/browse/${{ inputs.JIRA_CODE }}
             - name: Url du service
