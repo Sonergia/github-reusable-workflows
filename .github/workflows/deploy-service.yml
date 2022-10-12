@@ -61,7 +61,7 @@ on:
         value: ${{ jobs.check-deploy-status.outputs.DEPLOY_STATUS }}
 
 concurrency:
-  group: ${{ github.workflow }}-${{ inputs.CLUSTER }}
+  group: deploy-service-${{ github.workflow }}-${{ inputs.CLUSTER }}
   cancel-in-progress: false
 
 jobs:
