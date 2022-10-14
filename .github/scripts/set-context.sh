@@ -62,7 +62,9 @@ function getJiraCodeFromBranch {
     fi
 
     # Check JIRA ticket code format and clean up if not compliant
-    JIRA_CODE=$(echo ${JIRA_CODE} | grep -P -o '^[A-Z]{2,}-[0-9]+')
+    if [ ! -z ${JIRA_CODE} ]; then
+        JIRA_CODE=$(echo ${JIRA_CODE} | grep -P -o '^[A-Z]{2,}-[0-9]+')
+    fi
 
     if [ -z ${JIRA_CODE} ]; then
         echo "::warning title=Set context::Naming convention error: could not extract JIRA ticket code from source branch ref '${GITHUB_REF_NAME}'"
