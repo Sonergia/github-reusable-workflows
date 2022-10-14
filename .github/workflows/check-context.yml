@@ -132,7 +132,7 @@ jobs:
 
       - name: Set context from git and inputs
         id: set-context
-        run: ./.github/scripts/set-context.sh
+        run: ./.github/scripts/set-context.sh ${{ inputs.CLUSTER }}
 
       - name: Change string case function
         id: string

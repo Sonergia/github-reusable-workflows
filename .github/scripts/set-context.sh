@@ -70,6 +70,7 @@ function getJiraCodeFromBranch {
 }
 
 # Start script
+CLUSTER=${1:-test}
 CREATE_TAG_LATEST="false"
 
 # Manual case uses image static tag
