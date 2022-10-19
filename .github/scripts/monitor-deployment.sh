@@ -38,13 +38,13 @@ while [ ! -z "${SERVICE_DEPLOYMENT_IN_PROGRESS}" ]; do
 
     if [ -z "${INITIAL_ROLLOUT_STATE_REASON}" ]; then
         INITIAL_ROLLOUT_STATE_REASON=${ROLLOUT_STATE_REASON}
-        echo "::notice title=Monitor deployment:: ${INITIAL_ROLLOUT_STATE_REASON}"
+        echo "::notice title=Monitor deployment::${SERVICE}: ${INITIAL_ROLLOUT_STATE_REASON}"
     fi
 
     # echo "::debug title=Monitor deployment::FAILED_TASKS_COUNT=${FAILED_TASKS_COUNT}"
 
     if [ ! -z ${FAILED_TASKS_COUNT} ] && [ ${FAILED_TASKS_COUNT} -gt 0 ]; then
-        echo "::error title=Monitor deployment::Houston we have a problem! ${FAILED_TASKS_COUNT} task(s) failed to start! Max fails is set to ${MAX_FAILED_TASKS_COUNT}!"
+        echo "::error title=Monitor deployment::${SERVICE}: Houston we have a problem! ${FAILED_TASKS_COUNT} task(s) failed to start! Max fails is set to ${MAX_FAILED_TASKS_COUNT}!"
 
         # When reaching max fails => roll back to previous working version
         if [ ${FAILED_TASKS_COUNT} -ge ${MAX_FAILED_TASKS_COUNT} ]; then
@@ -55,7 +55,7 @@ while [ ! -z "${SERVICE_DEPLOYMENT_IN_PROGRESS}" ]; do
                 | select(.status == \"ACTIVE\") | select(.rolloutState == \"COMPLETED\") | .taskDefinition")
 
             if [ ! -z "${WORKING_SERVICE_TASK_ARN}" ]; then
-                echo "::warning title=Monitor deployment::Roll back service with a previous working task definition"
+                echo "::warning title=Monitor deployment::${SERVICE}: Roll back service with a previous working task definition"
 
                 PREVIOUS_WORKING_TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ${WORKING_SERVICE_TASK_ARN})
                 NEW_TASK_DEFINITION=$(echo "${PREVIOUS_WORKING_TASK_DEFINITION}" | jq ".taskDefinition \
@@ -73,14 +73,14 @@ while [ ! -z "${SERVICE_DEPLOYMENT_IN_PROGRESS}" ]; do
                     --task-definition ${NEW_TASK_DEFINITION_ARN})
             else
                 SERVICE_DEPLOYMENT_ERROR=1
-                echo "::error title=Monitor deployment::Could not find a previous working task definition to roll back onto! This is bad, better call your DevOps!"
+                echo "::error title=Monitor deployment::${SERVICE}: Could not find a previous working task definition to roll back onto! This is bad, better call your DevOps!"
 
                 break
             fi
         fi
     elif [[ $(echo "${ROLLOUT_STATE_REASON}" | grep "rolling back") ]]; then
         SERVICE_DEPLOYMENT_ROLLBACK=1
-        echo "::warning title=Monitor deployment:: ${ROLLOUT_STATE_REASON}"
+        echo "::warning title=Monitor deployment::${SERVICE}: ${ROLLOUT_STATE_REASON}"
     elif [ "${INITIAL_ROLLOUT_STATE_REASON}" != "${ROLLOUT_STATE_REASON}" ]; then
         INITIAL_ROLLOUT_STATE_REASON=""
     fi
@@ -95,9 +95,9 @@ if [ ! -z "${SERVICE_DEPLOYMENT_COMPLETED}" ]; then
     echo "------------------- DEPLOYMENT COMPLETED -------------------------"
 
     if [ ${SERVICE_DEPLOYMENT_ROLLBACK} == 1 ]; then
-        echo "::warning title=Monitor deployment::Service was roll backed!"
+        echo "::warning title=Monitor deployment::${SERVICE}: Service was roll backed!"
     else
-        echo "::notice title=Monitor deployment::Deployment completed"
+        echo "::notice title=Monitor deployment::${SERVICE}: Deployment completed"
     fi
 else
     # detecter le rollback :
@@ -112,7 +112,7 @@ else
         echo "------------------- DEPLOYMENT FAILED -------------------------"
 
         ROLLOUT_STATE_REASON=$(echo "${SERVICE_DEPLOYMENT_FAILED}" | jq --raw-output ".rolloutStateReason")
-        echo "::error title=Monitor deployment::Deployment failed, rolloutStateReason: ${ROLLOUT_STATE_REASON}"
+        echo "::error title=Monitor deployment::${SERVICE}: Deployment failed, rolloutStateReason: ${ROLLOUT_STATE_REASON}"
     fi
 fi
 
@@ -125,5 +125,5 @@ else
     DEPLOY_STATUS=success
 fi
 
-echo "::notice title=Monitor deployment::Deploy status is ${DEPLOY_STATUS}"
+echo "::notice title=Monitor deployment::${SERVICE}: Deploy status is ${DEPLOY_STATUS}"
 echo "DEPLOY_STATUS=${DEPLOY_STATUS}" >> ${GITHUB_OUTPUT}
