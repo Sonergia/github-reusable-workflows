@@ -62,6 +62,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
+        if: always()
 
       - name: Check deploy status
         id: check-deploy-status
@@ -194,6 +195,7 @@ jobs:
           #     value: "https://app.datadoghq.eu/logs?query=service:cloudwatch%20cluster:${{ inputs.CLUSTER }}%20%40service:${{ matrix.service }}"
 
       - name: Exit if deploy failed
+        if: always()
         run: |
           DEPLOY_STATUS=${{ steps.check-deploy-status.outputs.DEPLOY_STATUS }}
           if [ ${DEPLOY_STATUS} != 'success' ]; then

@@ -50,7 +50,7 @@ jobs:
   tf-service:
     name: Tf '${{ matrix.service }}' on cluster '${{ inputs.CLUSTER }}'
     runs-on: [self-hosted, "${{ inputs.CLUSTER }}"]
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     strategy:
       matrix:
@@ -159,6 +159,13 @@ jobs:
         id: monitor-deployment
         # if: ${{ steps.tf-apply-service.conclusion != 'failure' }}
         run: ./.github/scripts/monitor-deployment.sh ${{ inputs.CLUSTER }} ${{ matrix.service }}
+
+      - name: Exit if deploy failed
+        run: |
+          DEPLOY_STATUS=${{ steps.monitor-deployment.outputs.DEPLOY_STATUS }}
+          if [ ${DEPLOY_STATUS} != 'success' ]; then
+            exit 1
+          fi
 
     outputs:
       DEPLOY_STATUS: ${{ steps.monitor-deployment.outputs.DEPLOY_STATUS }}
