@@ -148,10 +148,10 @@ jobs:
             DEPLOY_STATUS="✅ ${DEPLOY_STATUS}"
             DEPLOY_COLOR=2cbe4e
           elif [ "${DEPLOY_STATUS}" == "failure" ]; then
-            DEPLOY_STATUS="❗${DEPLOY_STATUS}"
+            DEPLOY_STATUS="❗${DEPLOY_STATUS}: l'app ne démarre pas correctement et n'a pas pu être livrée (rollback) !"
             DEPLOY_COLOR=ffc107
           elif [ "${DEPLOY_STATUS}" == "error" ]; then
-            DEPLOY_STATUS="❌ ${DEPLOY_STATUS}"
+            DEPLOY_STATUS="❌ ${DEPLOY_STATUS}: erreur de CICD, appelle un DevOps !"
             DEPLOY_COLOR=cb2431
           fi
 
