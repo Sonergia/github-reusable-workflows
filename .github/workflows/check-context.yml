@@ -102,7 +102,7 @@ jobs:
         if: always()
         run: |
           COMMIT_MESSAGE=$(git log -1 --pretty=format:"%s")
-          echo "COMMIT_MESSAGE=${COMMIT_MESSAGE}" >> ${GITHUB_OUTPUT}
+          echo "COMMIT_MESSAGE=\"${COMMIT_MESSAGE}\"" >> ${GITHUB_OUTPUT}
 
       # Checkout reusable workflow to get bash scripts
       - uses: actions/checkout@v3

@@ -80,7 +80,7 @@ jobs:
         if: always()
         run: |
           COMMIT_MESSAGE=$(git log -1 --pretty=format:"%s")
-          echo "COMMIT_MESSAGE=${COMMIT_MESSAGE}" >> ${GITHUB_OUTPUT}
+          echo "COMMIT_MESSAGE=\"${COMMIT_MESSAGE}\"" >> ${GITHUB_OUTPUT}
 
       - name: Map vars with github environment
         id: map-github-env
