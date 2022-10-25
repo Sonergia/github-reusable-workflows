@@ -102,7 +102,7 @@ jobs:
         if: always()
         run: |
           COMMIT_MESSAGE=$(git log -1 --pretty=format:"%s")
-          echo "COMMIT_MESSAGE=\"${COMMIT_MESSAGE}\"" >> ${GITHUB_OUTPUT}
+          echo "COMMIT_MESSAGE=${COMMIT_MESSAGE}" >> ${GITHUB_OUTPUT}
 
       # Checkout reusable workflow to get bash scripts
       - uses: actions/checkout@v3
@@ -140,9 +140,19 @@ jobs:
         with:
           string: ${{ steps.set-context.outputs.CLUSTER }}
 
+      - name: Teams notification content
+        id: teams-notification-content
+        if: ${{ always() && inputs.NOTIFICATIONS_TEAMS == 'true' }}
+        run: |
+          CUSTOM_FACT_JIRA=""
+          if [ ! -z "${{ steps.set-context.outputs.JIRA_CODE }}" ]; then
+            CUSTOM_FACT_JIRA="[${{ steps.set-context.outputs.JIRA_CODE }}](https://sonergia.atlassian.net/browse/${{ steps.set-context.outputs.JIRA_CODE }})"
+          fi
+          echo "CUSTOM_FACT_JIRA=${CUSTOM_FACT_JIRA}" >> ${GITHUB_OUTPUT}
+
       # Notify at the start of workflow
       - name: Notify teams channel
-        uses: djthornton1212/ms-teams-notification@e658184be2a664fae7a9220bb38eb97b0a5946a6
+        uses: Sonergia/ms-teams-notification@add-potential-action
         if: ${{ always() && inputs.NOTIFICATIONS_TEAMS == 'true' }}
         with:
           github-token: ${{ github.token }}
@@ -150,9 +160,9 @@ jobs:
           notification-summary: Déploiement en cours...
           notification-color: 999999
           timezone: Europe/Paris
-          view-commit-changes: true
-          view-workflow-run: true
-          view-pull-request: false
+          # view-commit-changes: true
+          # view-workflow-run: true
+          # view-pull-request: false
           custom-facts: |
             - name: Status
               value: ⏱ in progress...
@@ -160,12 +170,14 @@ jobs:
               value: ${{ steps.string.outputs.uppercase }}
             - name: Service(s)
               value: ${{ join(fromJson(inputs.SERVICES), ',') }}
-            - name: Branche
-              value: ${{ github.server_url }}/${{ github.repository }}/tree/${{ github.ref }}
-            - name: Commit
-              value: ${{ steps.git-commit.outputs.COMMIT_MESSAGE }}
-            - name: Url du Jira
-              value: https://sonergia.atlassian.net/browse/${{ steps.set-context.outputs.JIRA_CODE }}
+            - name: 📖 Commit
+              value: "[${{ steps.git-commit.outputs.COMMIT_MESSAGE }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})"
+            - name: 📕 Branche
+              value: "[${{ github.ref_name }}](${{ github.server_url }}/${{ github.repository }}/tree/${{ github.ref }})"
+            - name: 🔧 CI/CD
+              value: "[Run #${{ github.run_attempt }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+            - name: 📋 Jira
+              value: "${{ steps.teams-notification-content.outputs.CUSTOM_FACT_JIRA }}"
 
     outputs:
       SHA_SHORT: ${{ steps.git-sha.outputs.SHA_SHORT }}
