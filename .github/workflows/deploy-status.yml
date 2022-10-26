@@ -75,12 +75,13 @@ jobs:
           fi
           echo "DEPLOY_STATUS=${DEPLOY_STATUS}" >> ${GITHUB_OUTPUT}
 
-      - name: Get commit message
-        id: get-commit
+      # Get commit message before checking out reusable workflows
+      - name: Git output commit message
+        id: git-commit
         if: always()
         run: |
           COMMIT_MESSAGE=$(git log -1 --pretty=format:"%s")
-          echo "COMMIT_MESSAGE=\"${COMMIT_MESSAGE}\"" >> ${GITHUB_OUTPUT}
+          echo "COMMIT_MESSAGE=${COMMIT_MESSAGE}" >> ${GITHUB_OUTPUT}
 
       - name: Map vars with github environment
         id: map-github-env
@@ -158,9 +159,27 @@ jobs:
           echo "DEPLOY_STATUS=${DEPLOY_STATUS}" >> ${GITHUB_OUTPUT}
           echo "DEPLOY_COLOR=${DEPLOY_COLOR}" >> ${GITHUB_OUTPUT}
 
+      # Checkout reusable workflow to get bash scripts
+      - uses: actions/checkout@v3
+        with:
+          repository: Sonergia/github-reusable-workflows
+          ref: '2.x'
+          # ref: 'delivery' # Only when testing ############## /!\ ##############
+
+      - name: Teams notification content
+        id: teams-notification-content
+        if: ${{ always() && inputs.NOTIFICATIONS_TEAMS == 'true' }}
+        run: |
+          CUSTOM_FACT_JIRA=""
+          if [ ! -z "${{ inputs.JIRA_CODE }}" ]; then
+            CUSTOM_FACT_JIRA="[${{ inputs.JIRA_CODE }}](https://sonergia.atlassian.net/browse/${{ inputs.JIRA_CODE }})"
+          fi
+          echo "CUSTOM_FACT_JIRA=${CUSTOM_FACT_JIRA}" >> ${GITHUB_OUTPUT}
+
       # Notify at the end of workflow
+      # You can use markdown: https://support.microsoft.com/en-us/office/use-markdown-formatting-in-teams-4d10bd65-55e2-4b2d-a1f3-2bebdcd2c772
       - name: Notify teams channel
-        uses: djthornton1212/ms-teams-notification@e658184be2a664fae7a9220bb38eb97b0a5946a6
+        uses: Sonergia/ms-teams-notification@add-potential-action
         if: ${{ always() && inputs.NOTIFICATIONS_TEAMS == 'true' }}
         with:
           github-token: ${{ github.token }}
@@ -168,9 +187,9 @@ jobs:
           notification-summary: Déploiement terminé !
           notification-color: ${{ steps.deploy-status-style.outputs.DEPLOY_COLOR }}
           timezone: Europe/Paris
-          view-commit-changes: true
-          view-workflow-run: true
-          view-pull-request: false
+          # view-commit-changes: true
+          # view-workflow-run: true
+          # view-pull-request: false
           custom-facts: |
             - name: Status
               value: ${{ steps.deploy-status-style.outputs.DEPLOY_STATUS }}
@@ -178,21 +197,23 @@ jobs:
               value: ${{ steps.string.outputs.uppercase }}
             - name: Service
               value: ${{ matrix.service }}
-            - name: Branche
-              value: ${{ github.server_url }}/${{ github.repository }}/tree/${{ github.ref }}
-            - name: Commit
-              value: ${{ steps.get-commit.outputs.COMMIT_MESSAGE }}
-            - name: Url du Jira
-              value: https://sonergia.atlassian.net/browse/${{ inputs.JIRA_CODE }}
-            - name: Url du service
-              value: http://${{ matrix.service }}.${{ inputs.CLUSTER }}.ecs
-            - name: Logs du service
-              value: https://app.datadoghq.eu/logs?query=service:cloudwatch%20cluster:${{ inputs.CLUSTER }}%20%40service:${{ matrix.service }}
-          # custom-actions: |
-          #   - name: Url du service
-          #     value: "http://${{ matrix.service }}.${{ inputs.CLUSTER }}.ecs"
-          #   - name: Logs du service
-          #     value: "https://app.datadoghq.eu/logs?query=service:cloudwatch%20cluster:${{ inputs.CLUSTER }}%20%40service:${{ matrix.service }}"
+            - name: 📖 Commit
+              value: "[${{ steps.git-commit.outputs.COMMIT_MESSAGE }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})"
+            - name: 📕 Branche
+              value: "[${{ github.ref_name }}](${{ github.server_url }}/${{ github.repository }}/tree/${{ github.ref }})"
+            - name: 🔧 CI/CD
+              value: "[Run #${{ github.run_attempt }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+            - name: 📋 Jira
+              value: "${{ steps.teams-notification-content.outputs.CUSTOM_FACT_JIRA }}"
+          custom-actions: | # Max 5 actions
+            - text: 🔗 privé
+              url: "http://${{ matrix.service }}.${{ inputs.CLUSTER }}.ecs"
+            - text: 🔗 public
+              url: "https://${{ matrix.service }}.${{ inputs.CLUSTER }}.sonergia.org"
+            - text: 🐕 Datadog
+              url: "https://app.datadoghq.eu/logs?query=service:cloudwatch%20cluster:${{ inputs.CLUSTER }}%20%40service:${{ matrix.service }}"
+            - text: 🐖 Mailhog
+              url: "http://mailhog.${{ inputs.CLUSTER }}.ecs:8025"
 
       - name: Exit if deploy failed
         if: always()
