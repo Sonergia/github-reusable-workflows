@@ -157,7 +157,7 @@ jobs:
         with:
           github-token: ${{ github.token }}
           ms-teams-webhook-uri: ${{ secrets.MS_TEAMS_WEBHOOK_URI }}
-          notification-summary: Déploiement en cours...
+          notification-summary: Déploiement ${{ join(fromJson(inputs.SERVICES), ',') }} -> ${{ inputs.CLUSTER }} en cours...
           notification-color: 999999
           timezone: Europe/Paris
           # view-commit-changes: true
