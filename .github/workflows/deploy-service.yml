@@ -314,7 +314,7 @@ jobs:
         id: teams-notification-content
         if: ${{ always() && inputs.NOTIFICATIONS_TEAMS == 'true' }}
         run: |
-          CUSTOM_FACT_JIRA=""
+          CUSTOM_FACT_JIRA="Non applicable"
           if [ ! -z "${{ inputs.JIRA_CODE }}" ]; then
             CUSTOM_FACT_JIRA="[${{ inputs.JIRA_CODE }}](https://sonergia.atlassian.net/browse/${{ inputs.JIRA_CODE }})"
           fi

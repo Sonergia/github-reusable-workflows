@@ -144,7 +144,7 @@ jobs:
         id: teams-notification-content
         if: ${{ always() && inputs.NOTIFICATIONS_TEAMS == 'true' }}
         run: |
-          CUSTOM_FACT_JIRA=""
+          CUSTOM_FACT_JIRA="Non applicable"
           if [ ! -z "${{ steps.set-context.outputs.JIRA_CODE }}" ]; then
             CUSTOM_FACT_JIRA="[${{ steps.set-context.outputs.JIRA_CODE }}](https://sonergia.atlassian.net/browse/${{ steps.set-context.outputs.JIRA_CODE }})"
           fi
@@ -157,7 +157,7 @@ jobs:
         with:
           github-token: ${{ github.token }}
           ms-teams-webhook-uri: ${{ secrets.MS_TEAMS_WEBHOOK_URI }}
-          notification-summary: Déploiement ${{ join(fromJson(inputs.SERVICES), ',') }} -> ${{ inputs.CLUSTER }} en cours...
+          notification-summary: Déploiement ${{ join(fromJson(inputs.SERVICES), ',') }} -> ${{ steps.set-context.outputs.CLUSTER }} en cours...
           notification-color: 999999
           timezone: Europe/Paris
           # view-commit-changes: true
