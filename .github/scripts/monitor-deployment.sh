@@ -47,7 +47,7 @@ while [ ! -z "${SERVICE_DEPLOYMENT_IN_PROGRESS}" ]; do
         echo "::error title=Monitor deployment::${SERVICE}: Houston we have a problem! ${FAILED_TASKS_COUNT} task(s) failed to start! Max fails is set to ${MAX_FAILED_TASKS_COUNT}!"
 
         # When reaching max fails => roll back to previous working version
-        if [ ${FAILED_TASKS_COUNT} -ge ${MAX_FAILED_TASKS_COUNT} ]; then
+        if [ ${FAILED_TASKS_COUNT} -ge ${MAX_FAILED_TASKS_COUNT} ] && [ ${SERVICE_DEPLOYMENT_ROLLBACK} == 0 ]; then
             # Get a previous working task definition (which is inactive now)
             # And create a new revision from the previous working one
             SERVICE_DEPLOYMENT_ROLLBACK=1
