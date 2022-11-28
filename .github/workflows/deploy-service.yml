@@ -239,10 +239,8 @@ jobs:
         if: always()
         run: |
           # Available env: development, testing, staging, or production
+          # See .jira/config.yml for environments mapping with our clusters
           GITHUB_ENVIRONMENT=${{ inputs.CLUSTER }}
-          if [ "${{ inputs.CLUSTER }}" == "release" ]; then
-            GITHUB_ENVIRONMENT="staging"
-          fi
           echo "GITHUB_ENVIRONMENT=${GITHUB_ENVIRONMENT}" >> ${GITHUB_OUTPUT}
 
       - name: Change string case function

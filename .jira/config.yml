@@ -1,0 +1,10 @@
+deployments:
+  environmentMapping:
+    development:
+      - "sandbox"
+    testing:
+      - "test"
+    staging:
+      - "release"
+    production:
+      - "prod"
