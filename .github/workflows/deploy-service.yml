@@ -33,7 +33,7 @@ on:
         required: true
       AWS_SECRET_ACCESS_KEY_TF:
         required: true
-      GH_TF_SSH_KEY_JULIEN_LEDOUX:
+      GH_TF_SSH_KEY:
         required: true
 
 concurrency:
@@ -81,7 +81,7 @@ jobs:
 
       - name: Terraform init service '${{ matrix.service }}' on cluster '${{ inputs.CLUSTER }}' configuration
         env:
-          GIT_SSH_COMMAND: "echo '${{ secrets.GH_TF_SSH_KEY_JULIEN_LEDOUX }}' > id_rsa
+          GIT_SSH_COMMAND: "echo '${{ secrets.GH_TF_SSH_KEY }}' > id_rsa
             && ssh-keyscan github.com > known_hosts
             && chmod 600 id_rsa known_hosts
             && ssh -i ./id_rsa -o UserKnownHostsFile=./known_hosts"
