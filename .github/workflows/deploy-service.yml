@@ -150,6 +150,7 @@ jobs:
           terraform_wrapper: false # Fix "/usr/bin/env: ‘node’: No such file or directory"
 
       - name: Terraform init service '${{ matrix.service }}' on cluster '${{ inputs.CLUSTER }}' configuration
+        id: tf-init
         if: |
           always() &&
           (inputs.IMAGE_EXISTS == 'false' && inputs.BUILD_DOCKER_RESULT == 'success') ||
@@ -162,11 +163,14 @@ jobs:
         working-directory: ./.terraform/services
         run: |
           cd ${{ matrix.service }}
+          terraform version | head -1
           terraform init -reconfigure -upgrade -backend-config=backend-${{ inputs.CLUSTER }}.conf
 
       - name: Terraform validate
+        id: tf-validate
         if: |
           always() &&
+          steps.tf-init.conclusion != 'failure' &&
           (inputs.IMAGE_EXISTS == 'false' && inputs.BUILD_DOCKER_RESULT == 'success') ||
           (inputs.IMAGE_EXISTS == 'true' && inputs.BUILD_DOCKER_RESULT == 'skipped')
         working-directory: ./.terraform/services
@@ -178,6 +182,7 @@ jobs:
         id: tf-apply-service
         if: |
           always() &&
+          steps.tf-validate.conclusion != 'failure' &&
           (inputs.IMAGE_EXISTS == 'false' && inputs.BUILD_DOCKER_RESULT == 'success') ||
           (inputs.IMAGE_EXISTS == 'true' && inputs.BUILD_DOCKER_RESULT == 'skipped')
         working-directory: ./.terraform/services

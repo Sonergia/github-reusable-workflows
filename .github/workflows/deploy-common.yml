@@ -64,6 +64,7 @@ jobs:
         run: |
           if [ -d ./common/config-global ]; then
             cd ./common/config-global
+            terraform version | head -1
             terraform init -upgrade
             terraform validate -no-color
             terraform apply -auto-approve
