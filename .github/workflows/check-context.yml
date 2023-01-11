@@ -144,11 +144,15 @@ jobs:
         id: teams-notification-content
         if: ${{ always() && inputs.NOTIFICATIONS_TEAMS == 'true' }}
         run: |
-          CUSTOM_FACT_JIRA="Non applicable"
           if [ ! -z "${{ steps.set-context.outputs.JIRA_CODE }}" ]; then
-            CUSTOM_FACT_JIRA="[${{ steps.set-context.outputs.JIRA_CODE }}](https://sonergia.atlassian.net/browse/${{ steps.set-context.outputs.JIRA_CODE }})"
+            CUSTOM_FACT_JIRA_RELEASE_NAME=Jira
+            CUSTOM_FACT_JIRA_RELEASE="[${{ steps.set-context.outputs.JIRA_CODE }}](https://sonergia.atlassian.net/browse/${{ steps.set-context.outputs.JIRA_CODE }})"
+          else
+            CUSTOM_FACT_JIRA_RELEASE_NAME=Release
+            CUSTOM_FACT_JIRA_RELEASE="[${{ github.ref_name }}](${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }})"
           fi
-          echo "CUSTOM_FACT_JIRA=${CUSTOM_FACT_JIRA}" >> ${GITHUB_OUTPUT}
+          echo "CUSTOM_FACT_JIRA_RELEASE_NAME=${CUSTOM_FACT_JIRA_RELEASE_NAME}" >> ${GITHUB_OUTPUT}
+          echo "CUSTOM_FACT_JIRA_RELEASE=${CUSTOM_FACT_JIRA_RELEASE}" >> ${GITHUB_OUTPUT}
 
       # Notify at the start of workflow
       - name: Notify teams channel
@@ -176,8 +180,8 @@ jobs:
               value: "[${{ github.ref_name }}](${{ github.server_url }}/${{ github.repository }}/tree/${{ github.ref }})"
             - name: 🔧 CI/CD
               value: "[Run #${{ github.run_attempt }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
-            - name: 📋 Jira
-              value: "${{ steps.teams-notification-content.outputs.CUSTOM_FACT_JIRA }}"
+            - name: 📋 ${{ steps.teams-notification-content.outputs.CUSTOM_FACT_JIRA_RELEASE_NAME }}
+              value: "${{ steps.teams-notification-content.outputs.CUSTOM_FACT_JIRA_RELEASE }}"
 
     outputs:
       SHA_SHORT: ${{ steps.git-sha.outputs.SHA_SHORT }}

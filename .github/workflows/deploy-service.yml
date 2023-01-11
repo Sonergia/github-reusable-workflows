@@ -174,8 +174,6 @@ jobs:
           (inputs.IMAGE_EXISTS == 'true' && inputs.BUILD_DOCKER_RESULT == 'skipped')
         working-directory: ./.terraform/services
         run: |
-          echo "::debug title=Deploy service::Step tf init conclusion: ${{ steps.tf-init.conclusion }}"
-
           # To activate debug logs
           # export TF_LOG=debug
 
@@ -190,8 +188,6 @@ jobs:
           (inputs.IMAGE_EXISTS == 'true' && inputs.BUILD_DOCKER_RESULT == 'skipped')
         working-directory: ./.terraform/services
         run: |
-          echo "::debug title=Deploy service::Step tf init conclusion: ${{ steps.tf-validate.conclusion }}"
-
           cd ${{ matrix.service }}
 
           DOCKER_IMAGE_TAG=${{ inputs.IMAGE_SHA }}
@@ -334,12 +330,15 @@ jobs:
         id: teams-notification-content
         if: ${{ always() && inputs.NOTIFICATIONS_TEAMS == 'true' }}
         run: |
-          # Release link: https://github.com/Sonergia/concerto-home-front-partner/releases/tag/1.2.1
-          CUSTOM_FACT_JIRA="Non applicable"
           if [ ! -z "${{ inputs.JIRA_CODE }}" ]; then
-            CUSTOM_FACT_JIRA="[${{ inputs.JIRA_CODE }}](https://sonergia.atlassian.net/browse/${{ inputs.JIRA_CODE }})"
+            CUSTOM_FACT_JIRA_RELEASE_NAME=Jira
+            CUSTOM_FACT_JIRA_RELEASE="[${{ inputs.JIRA_CODE }}](https://sonergia.atlassian.net/browse/${{ inputs.JIRA_CODE }})"
+          else
+            CUSTOM_FACT_JIRA_RELEASE_NAME=Release
+            CUSTOM_FACT_JIRA_RELEASE="[${{ github.ref_name }}](${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }})"
           fi
-          echo "CUSTOM_FACT_JIRA=${CUSTOM_FACT_JIRA}" >> ${GITHUB_OUTPUT}
+          echo "CUSTOM_FACT_JIRA_RELEASE_NAME=${CUSTOM_FACT_JIRA_RELEASE_NAME}" >> ${GITHUB_OUTPUT}
+          echo "CUSTOM_FACT_JIRA_RELEASE=${CUSTOM_FACT_JIRA_RELEASE}" >> ${GITHUB_OUTPUT}
 
       # Notify at the end of workflow
       # You can use markdown: https://support.microsoft.com/en-us/office/use-markdown-formatting-in-teams-4d10bd65-55e2-4b2d-a1f3-2bebdcd2c772
@@ -368,8 +367,8 @@ jobs:
               value: "[${{ github.ref_name }}](${{ github.server_url }}/${{ github.repository }}/tree/${{ github.ref }})"
             - name: 🔧 CI/CD
               value: "[Run #${{ github.run_attempt }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
-            - name: 📋 Jira
-              value: "${{ steps.teams-notification-content.outputs.CUSTOM_FACT_JIRA }}"
+            - name: 📋 ${{ steps.teams-notification-content.outputs.CUSTOM_FACT_JIRA_RELEASE_NAME }}
+              value: "${{ steps.teams-notification-content.outputs.CUSTOM_FACT_JIRA_RELEASE }}"
           custom-actions: | # Max 5 actions
             - text: 🔗 privé
               url: "http://${{ matrix.service }}.${{ inputs.CLUSTER }}.ecs"
