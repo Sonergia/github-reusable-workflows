@@ -51,7 +51,7 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
         with:
-          terraform_version: 1.3.0
+          terraform_version: v1.3.6
 
       # Common part
       - name: Terraform config global (init / validate / apply)
