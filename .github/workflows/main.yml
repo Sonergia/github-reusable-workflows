@@ -145,6 +145,7 @@ jobs:
     with:
       AWS_DEFAULT_REGION: ${{ inputs.AWS_DEFAULT_REGION }}
       CLUSTER: ${{ inputs.CLUSTER }}
+      SERVICE_NAMESPACE: ${{ inputs.SERVICE_NAMESPACE }}
       SERVICES: ${{ inputs.SERVICES }}
       IMAGE_SHA: ${{ inputs.IMAGE_SHA }}
       IMAGE_TAG: ${{ inputs.IMAGE_TAG }}
