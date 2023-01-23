@@ -9,6 +9,9 @@ on:
       CLUSTER:
         required: true
         type: string
+      SERVICE_NAMESPACE:
+        required: true
+        type: string
       SERVICES:
         required: true
         type: string
@@ -287,24 +290,6 @@ jobs:
           transient-environment: ${{ inputs.CLUSTER != 'prod' }}
           description: ${{ matrix.service }} (${{ inputs.IMAGE_SHA }} / ${{ inputs.IMAGE_TAG }}) deployed on cluster ${{ inputs.CLUSTER }}
 
-      - name: Login JIRA
-        uses: atlassian/gajira-login@master
-        if: ${{ always() && inputs.NOTIFICATIONS_JIRA == 'true' && inputs.JIRA_CODE != '' && steps.check-deploy-status.outputs.DEPLOY_STATUS == 'success' }}
-        env:
-          JIRA_BASE_URL: https://sonergia.atlassian.net
-          JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
-          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
-
-      - name: Comment on JIRA issue
-        uses: atlassian/gajira-comment@23b9748b2d2ea1c486bd788daed8b4c00fccf362
-        if: ${{ always() && inputs.NOTIFICATIONS_JIRA == 'true' && inputs.JIRA_CODE != '' && steps.check-deploy-status.outputs.DEPLOY_STATUS == 'success' }}
-        with:
-          issue: ${{ inputs.JIRA_CODE }}
-          comment: |
-            Ticket déployé sur le cluster ${{ steps.string.outputs.uppercase }} (cf Releases):
-              - Url du service: http://${{ matrix.service }}.${{ inputs.CLUSTER }}.ecs
-              - Logs du service: https://app.datadoghq.eu/logs?query=service:cloudwatch%20cluster:${{ inputs.CLUSTER }}%20%40service:${{ matrix.service }}
-
       - name: Deploy status style
         id: deploy-status-style
         if: ${{ always() && inputs.NOTIFICATIONS_TEAMS == 'true' }}
@@ -325,6 +310,26 @@ jobs:
 
           echo "DEPLOY_STATUS=${DEPLOY_STATUS}" >> ${GITHUB_OUTPUT}
           echo "DEPLOY_COLOR=${DEPLOY_COLOR}" >> ${GITHUB_OUTPUT}
+
+      - name: Login JIRA
+        uses: atlassian/gajira-login@master
+        if: ${{ always() && inputs.NOTIFICATIONS_JIRA == 'true' && inputs.JIRA_CODE != '' && steps.check-deploy-status.outputs.DEPLOY_STATUS == 'success' }}
+        env:
+          JIRA_BASE_URL: https://sonergia.atlassian.net
+          JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+
+      - name: Comment on JIRA issue
+        uses: atlassian/gajira-comment@23b9748b2d2ea1c486bd788daed8b4c00fccf362
+        if: ${{ always() && inputs.NOTIFICATIONS_JIRA == 'true' && inputs.JIRA_CODE != '' && steps.check-deploy-status.outputs.DEPLOY_STATUS == 'success' }}
+        with:
+          issue: ${{ inputs.JIRA_CODE }}
+          comment: |
+            Ticket déployé sur le cluster ${{ steps.string.outputs.uppercase }}:
+              - [🔗 public](https://${{ matrix.service }}.${{ inputs.CLUSTER }}.sonergia.org)
+              - [🔗 privé](http://${{ matrix.service }}.${{ inputs.CLUSTER }}.ecs)
+              - [🐕 Datadog](https://app.datadoghq.eu/logs?query=cluster:${{ inputs.CLUSTER }}%20servicename:%22${{ inputs.SERVICE_NAMESPACE }}/${{ matrix.service }}%22&cols=privatedns,servicename)
+              - [🐖 Mailhog](http://mailhog.${{ inputs.CLUSTER }}.ecs:8025)
 
       - name: Teams notification content
         id: teams-notification-content
@@ -375,7 +380,7 @@ jobs:
             - text: 🔗 public
               url: "https://${{ matrix.service }}.${{ inputs.CLUSTER }}.sonergia.org"
             - text: 🐕 Datadog
-              url: "https://app.datadoghq.eu/logs?query=service:cloudwatch%20cluster:${{ inputs.CLUSTER }}%20%40service:${{ matrix.service }}"
+              url: "https://app.datadoghq.eu/logs?query=cluster:${{ inputs.CLUSTER }}%20servicename:%22${{ inputs.SERVICE_NAMESPACE }}/${{ matrix.service }}%22&cols=privatedns,servicename"
             - text: 🐖 Mailhog
               url: "http://mailhog.${{ inputs.CLUSTER }}.ecs:8025"
 
