@@ -184,7 +184,7 @@ jobs:
               value: "${{ steps.teams-notification-content.outputs.CUSTOM_FACT_JIRA_RELEASE }}"
           custom-actions: | # Max 5 actions
             - text: 🐕 Datadog
-              url: "https://app.datadoghq.eu/logs?query=cluster:${{ inputs.CLUSTER }}%20namespace:${{ inputs.SERVICE_NAMESPACE }}&cols=privatedns,servicename"
+              url: "https://app.datadoghq.eu/logs?query=cluster:${{ steps.set-context.outputs.CLUSTER }}%20namespace:${{ inputs.SERVICE_NAMESPACE }}&cols=privatedns,servicename"
 
     outputs:
       SHA_SHORT: ${{ steps.git-sha.outputs.SHA_SHORT }}
