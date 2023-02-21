@@ -1,0 +1,34 @@
+name: Merge tag or branch into master
+
+on:
+  workflow_call:
+  
+    secrets:
+      access-token:
+        description: 'A token passed from the caller workflow'
+        required: true
+
+jobs:
+  merge:
+    name: Merge '${{ github.ref }}' into master
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Tag
+        id: check-tag
+        run: |
+          if [[ ${{ github.ref }} =~ ^refs/tags/[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "match=true" >> $GITHUB_OUTPUT
+          else
+              echo "${{ github.ref }} n'est pas un tag de livraison (format : x.y.z)."
+              exit 1
+          fi
+          
+      - name: Merge branch
+        if: steps.check-tag.outputs.match == 'true'
+        uses: julbme/gh-action-merge-branch@v1
+        with:
+          from: ${{ github.ref }}
+          to: master
+          message: Merge ${{ github.ref }} into master
+        env:
+          GITHUB_TOKEN: ${{ secrets.access-token }}
