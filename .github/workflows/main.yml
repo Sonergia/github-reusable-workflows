@@ -82,7 +82,7 @@ concurrency:
 
 jobs:
   # check-context:
-  #   uses: Sonergia/github-reusable-workflows/.github/workflows/check-context.yml@2.x
+  #   uses: ./.github/workflows/check-context.yml
   #   with:
   #     AWS_DEFAULT_REGION: ${{ inputs.AWS_DEFAULT_REGION }}
   #     CLUSTER: ${{ inputs.CLUSTER }}
@@ -108,7 +108,7 @@ jobs:
 
   # Terraform deploy common (with reusable workflows)
   deploy-common:
-    uses: Sonergia/github-reusable-workflows/.github/workflows/deploy-common.yml@2.x
+    uses: ./.github/workflows/deploy-common.yml
     with:
       AWS_DEFAULT_REGION: ${{ inputs.AWS_DEFAULT_REGION }}
       CLUSTER: ${{ inputs.CLUSTER }}
@@ -121,7 +121,7 @@ jobs:
   build-docker:
     needs:
       - deploy-common
-    uses: Sonergia/github-reusable-workflows/.github/workflows/build-docker.yml@2.x
+    uses: ./.github/workflows/build-docker.yml
     if: ${{ inputs.IMAGE_EXISTS == 'false' }}
     with:
       AWS_DEFAULT_REGION: ${{ inputs.AWS_DEFAULT_REGION }}
@@ -139,7 +139,7 @@ jobs:
     needs:
       - build-docker
       - deploy-common
-    uses: Sonergia/github-reusable-workflows/.github/workflows/deploy-service.yml@2.x
+    uses: ./.github/workflows/deploy-service.yml
     # always() condition avoid this jobs to be skipped if needed jobs are skipped
     if: always()
     with:
