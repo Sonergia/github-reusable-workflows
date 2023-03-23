@@ -125,17 +125,24 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         if: |
-          (inputs.IMAGE_EXISTS == 'false' && inputs.BUILD_DOCKER_RESULT == 'success') ||
-          (inputs.IMAGE_EXISTS == 'true' && inputs.BUILD_DOCKER_RESULT == 'skipped')
+          always() &&
+          (
+            (inputs.IMAGE_EXISTS == 'false' && inputs.BUILD_DOCKER_RESULT == 'success') ||
+            (inputs.IMAGE_EXISTS == 'true' && inputs.BUILD_DOCKER_RESULT == 'skipped')
+          )
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_TF }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_TF }}
           aws-region: ${{ inputs.AWS_DEFAULT_REGION }}
 
       - name: Install packages for Terraform (mysql/psql clients)
+        # must use always() here for tf-apply-service dependancy
         if: |
-          (inputs.IMAGE_EXISTS == 'false' && inputs.BUILD_DOCKER_RESULT == 'success') ||
-          (inputs.IMAGE_EXISTS == 'true' && inputs.BUILD_DOCKER_RESULT == 'skipped')
+          always() &&
+          (
+            (inputs.IMAGE_EXISTS == 'false' && inputs.BUILD_DOCKER_RESULT == 'success') ||
+            (inputs.IMAGE_EXISTS == 'true' && inputs.BUILD_DOCKER_RESULT == 'skipped')
+          )
         run: |
           sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
           wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
@@ -146,18 +153,26 @@ jobs:
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
+        # must use always() here for tf-apply-service dependancy
         if: |
-          (inputs.IMAGE_EXISTS == 'false' && inputs.BUILD_DOCKER_RESULT == 'success') ||
-          (inputs.IMAGE_EXISTS == 'true' && inputs.BUILD_DOCKER_RESULT == 'skipped')
+          always() &&
+          (
+            (inputs.IMAGE_EXISTS == 'false' && inputs.BUILD_DOCKER_RESULT == 'success') ||
+            (inputs.IMAGE_EXISTS == 'true' && inputs.BUILD_DOCKER_RESULT == 'skipped')
+          )
         with:
           terraform_version: v1.3.7
           terraform_wrapper: false # Fix "/usr/bin/env: ‘node’: No such file or directory"
 
       - name: Terraform init service '${{ matrix.service }}' on cluster '${{ inputs.CLUSTER }}' configuration
         id: tf-init
+        # must use always() here for tf-apply-service dependancy
         if: |
-          (inputs.IMAGE_EXISTS == 'false' && inputs.BUILD_DOCKER_RESULT == 'success') ||
-          (inputs.IMAGE_EXISTS == 'true' && inputs.BUILD_DOCKER_RESULT == 'skipped')
+          always() &&
+          (
+            (inputs.IMAGE_EXISTS == 'false' && inputs.BUILD_DOCKER_RESULT == 'success') ||
+            (inputs.IMAGE_EXISTS == 'true' && inputs.BUILD_DOCKER_RESULT == 'skipped')
+          )
         env:
           GIT_SSH_COMMAND: "echo '${{ secrets.GH_TF_SSH_KEY }}' > id_rsa
             && ssh-keyscan github.com > known_hosts
@@ -171,10 +186,14 @@ jobs:
 
       - name: Terraform validate
         id: tf-validate
+        # must use always() here for tf-apply-service dependancy
         if: |
+          always() &&
           steps.tf-init.conclusion != 'failure' &&
-          (inputs.IMAGE_EXISTS == 'false' && inputs.BUILD_DOCKER_RESULT == 'success') ||
-          (inputs.IMAGE_EXISTS == 'true' && inputs.BUILD_DOCKER_RESULT == 'skipped')
+          (
+            (inputs.IMAGE_EXISTS == 'false' && inputs.BUILD_DOCKER_RESULT == 'success') ||
+            (inputs.IMAGE_EXISTS == 'true' && inputs.BUILD_DOCKER_RESULT == 'skipped')
+          )
         working-directory: ./.terraform/services
         run: |
           # To activate debug logs
@@ -185,10 +204,14 @@ jobs:
 
       - name: Terraform apply service '${{ matrix.service }}' on cluster '${{ inputs.CLUSTER }}'
         id: tf-apply-service
+        # using always() here will avoid cancellation in progress
         if: |
+          always() &&
           steps.tf-validate.conclusion != 'failure' &&
-          (inputs.IMAGE_EXISTS == 'false' && inputs.BUILD_DOCKER_RESULT == 'success') ||
-          (inputs.IMAGE_EXISTS == 'true' && inputs.BUILD_DOCKER_RESULT == 'skipped')
+          (
+            (inputs.IMAGE_EXISTS == 'false' && inputs.BUILD_DOCKER_RESULT == 'success') ||
+            (inputs.IMAGE_EXISTS == 'true' && inputs.BUILD_DOCKER_RESULT == 'skipped')
+          )
         working-directory: ./.terraform/services
         run: |
           cd ${{ matrix.service }}
