@@ -352,7 +352,7 @@ jobs:
               - [🔗 public](https://${{ matrix.service }}.${{ inputs.CLUSTER }}.sonergia.org)
               - [🔗 privé](http://${{ matrix.service }}.${{ inputs.CLUSTER }}.ecs)
               - [🐕 Datadog](https://app.datadoghq.eu/logs?query=cluster:${{ inputs.CLUSTER }}%20servicename:%22${{ inputs.SERVICE_NAMESPACE }}/${{ matrix.service }}%22&cols=privatedns,servicename)
-              - [🐖 Mailhog](http://mailhog.${{ inputs.CLUSTER }}.ecs:8025)
+              - [📬 Mail](http://mail.${{ inputs.CLUSTER }}.ecs:1080)
 
       - name: Teams notification content
         id: teams-notification-content
@@ -404,8 +404,8 @@ jobs:
               url: "https://${{ matrix.service }}.${{ inputs.CLUSTER }}.sonergia.org"
             - text: 🐕 Datadog
               url: "https://app.datadoghq.eu/logs?query=cluster:${{ inputs.CLUSTER }}%20servicename:%22${{ inputs.SERVICE_NAMESPACE }}/${{ matrix.service }}%22&cols=privatedns,servicename"
-            - text: 🐖 Mailhog
-              url: "http://mailhog.${{ inputs.CLUSTER }}.ecs:8025"
+            - text: 📬 Mail
+              url: "http://mail.${{ inputs.CLUSTER }}.ecs:1080"
 
       - name: Exit if deploy failed
         if: always()

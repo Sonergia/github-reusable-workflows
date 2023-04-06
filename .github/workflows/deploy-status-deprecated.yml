@@ -212,8 +212,8 @@ jobs:
               url: "https://${{ matrix.service }}.${{ inputs.CLUSTER }}.sonergia.org"
             - text: 🐕 Datadog
               url: "https://app.datadoghq.eu/logs?query=service:cloudwatch%20cluster:${{ inputs.CLUSTER }}%20%40service:${{ matrix.service }}"
-            - text: 🐖 Mailhog
-              url: "http://mailhog.${{ inputs.CLUSTER }}.ecs:8025"
+            - text: 📬 Mail
+              url: "http://mail.${{ inputs.CLUSTER }}.ecs:1080"
 
       - name: Exit if deploy failed
         if: always()
