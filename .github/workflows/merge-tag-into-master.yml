@@ -3,7 +3,6 @@ run-name: Merge ${{ github.ref_name }} into master by @${{ github.actor }}
 
 on:
   workflow_call:
-  
     secrets:
       access-token:
         description: 'A token passed from the caller workflow'
@@ -13,6 +12,8 @@ jobs:
   merge:
     name: Merge '${{ github.ref_name }}' into master
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+
     steps:
       - name: Check Tag
         id: check-tag
@@ -23,7 +24,7 @@ jobs:
               echo "${{ github.ref }} n'est pas un tag de livraison (format : x.y.z)."
               exit 1
           fi
-          
+
       - name: Merge branch
         if: steps.check-tag.outputs.match == 'true'
         uses: julbme/gh-action-merge-branch@v1
