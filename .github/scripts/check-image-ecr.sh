@@ -15,9 +15,10 @@ IMAGE_SHA=${3:?IMAGE_SHA is required}
 IMAGE_EXISTS="false"
 
 for IMAGE_NAME in ${IMAGE_NAMES_LIST}; do
+  # Add "|| true" to command to avoid exit code in case repo does not exists
   IMAGES_LIST=$(aws ecr list-images \
     --repository-name ${SERVICE_NAMESPACE}/${IMAGE_NAME} \
-    --filter tagStatus=TAGGED)
+    --filter tagStatus=TAGGED || true)
   IMAGE_SHA_EXISTS=$(echo "${IMAGES_LIST}" \
     | jq -c ".imageIds[] | select(.imageTag == \"${IMAGE_SHA}\")")
 
