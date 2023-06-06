@@ -12,7 +12,7 @@ set -e
 SERVICE_NAMESPACE=${1:?SERVICE_NAMESPACE is required}
 IMAGE_NAMES_LIST=${2:?IMAGE_NAMES_LIST is required}
 IMAGE_SHA=${3:?IMAGE_SHA is required}
-IMAGE_EXISTS="false"
+IMAGE_EXISTS="true"
 
 for IMAGE_NAME in ${IMAGE_NAMES_LIST}; do
   # Add "|| true" to command to avoid exit code in case repo does not exists
@@ -23,7 +23,6 @@ for IMAGE_NAME in ${IMAGE_NAMES_LIST}; do
     | jq -c ".imageIds[] | select(.imageTag == \"${IMAGE_SHA}\")")
 
   if [ ! -z "${IMAGE_SHA_EXISTS}" ]; then
-    IMAGE_EXISTS="true"
     echo "::notice title=Check docker image::Image tag SHA '${IMAGE_SHA}' already exists in ${SERVICE_NAMESPACE}/${IMAGE_NAME}"
 
     # Check Git release tag
@@ -49,6 +48,8 @@ for IMAGE_NAME in ${IMAGE_NAMES_LIST}; do
       fi
     fi
   else
+    # If one image is missing: rebuild all images
+    IMAGE_EXISTS="false"
     echo "::notice title=Check docker image::Image tag SHA '${IMAGE_SHA}' does not exists in ${SERVICE_NAMESPACE}/${IMAGE_NAME}"
   fi
 done
