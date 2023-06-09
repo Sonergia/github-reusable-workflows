@@ -1,4 +1,4 @@
-name: terraform deploy service workflow
+name: terraform deploy lambda workflow
 
 on:
   workflow_call:
@@ -6,38 +6,20 @@ on:
       AWS_DEFAULT_REGION:
         required: true
         type: string
-      CLUSTER:
+      ENVIRONMENT:
         required: true
         type: string
-      SERVICE_NAMESPACE:
+      LAMBDA_NAMESPACE:
         required: true
         type: string
-      SERVICES:
+      LAMBDAS:
+        description: "Lambdas list for matrix strategy"
         required: true
         type: string
-      IMAGE_SHA:
-        required: false
-        type: string
-        default: null
-      IMAGE_TAG:
-        required: false
-        type: string
-        default: null
-      IMAGE_EXISTS:   # booleans must be treated as string
+      SHA_SHORT:
+        description: "Git commit SHA short (without 'sha-' prefix)"
         required: true
         type: string
-      BUILD_DOCKER_RESULT:  # Possible values are success, failure, cancelled, or skipped
-        required: true
-        type: string
-      # FORCE_DEPLOYMENT is not bool because output transforms it in text
-      FORCE_DEPLOYMENT:
-        required: false
-        type: string
-        default: 'false'
-      DNS_PREFIX:
-        required: false
-        type: string
-        default: null
       JIRA_CODE:
         required: false
         type: string
@@ -67,17 +49,17 @@ on:
     outputs:
       DEPLOY_STATUS:
         description: "DEPLOY_STATUS might be: error, failure, success"
-        value: ${{ jobs.tf-service.outputs.DEPLOY_STATUS }}
+        value: ${{ jobs.tf-lambda.outputs.DEPLOY_STATUS }}
 
 concurrency:
-  group: deploy-service-${{ github.workflow }}-${{ inputs.CLUSTER }}
+  group: deploy-lambda-${{ github.workflow }}-${{ inputs.ENVIRONMENT }}
   cancel-in-progress: false
 
 jobs:
-  tf-service:
-    name: Tf '${{ matrix.service }}' on cluster '${{ inputs.CLUSTER }}'
-    runs-on: [self-hosted, "${{ inputs.CLUSTER }}"]
-    timeout-minutes: 45
+  tf-lambda:
+    name: Tf '${{ matrix.lambda }}' on environment '${{ inputs.ENVIRONMENT }}'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     # For deployment-action and checkout
     permissions:
@@ -86,7 +68,7 @@ jobs:
 
     strategy:
       matrix:
-        service: ${{ fromJson(inputs.SERVICES) }}
+        lambda: ${{ fromJson(inputs.LAMBDAS) }}
 
     steps:
       - name: Check required inputs
@@ -95,20 +77,17 @@ jobs:
             echo "::error title=Deploy common::Input AWS_DEFAULT_REGION is empty"
             exit 1
           fi
-          if [ -z "${{ inputs.CLUSTER }}" ]; then
-            echo "::error title=Deploy common::Input CLUSTER is empty"
+          if [ -z "${{ inputs.ENVIRONMENT }}" ]; then
+            echo "::error title=Deploy common::Input ENVIRONMENT is empty"
             exit 1
           fi
-          if [ -z "${{ inputs.SERVICES }}" ]; then
-            echo "::error title=Deploy common::Input SERVICES is empty"
+          if [ -z "${{ inputs.LAMBDAS }}" ]; then
+            echo "::error title=Deploy common::Input LAMBDAS is empty"
             exit 1
           fi
-          # Check that at least IMAGE_TAG is provided
-          if [ -z "${{ inputs.IMAGE_SHA }}" ]; then
-            if [ -z "${{ inputs.IMAGE_TAG }}" ]; then
-              echo "::error title=Deploy service::Input error: IMAGE_SHA and IMAGE_TAG can not be both empty ('${{ matrix.service }}' on cluster '${{ inputs.CLUSTER }}')"
-              exit 1
-            fi
+          if [ -z "${{ inputs.SHA_SHORT }}" ]; then
+            echo "::error title=Deploy common::Input SHA_SHORT is empty"
+            exit 1
           fi
 
       - uses: actions/checkout@v3
@@ -124,156 +103,77 @@ jobs:
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
-        if: |
-          always() &&
-          (
-            (inputs.IMAGE_EXISTS == 'false' && inputs.BUILD_DOCKER_RESULT == 'success') ||
-            (inputs.IMAGE_EXISTS == 'true' && inputs.BUILD_DOCKER_RESULT == 'skipped')
-          )
+        if: always()
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_TF }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_TF }}
           aws-region: ${{ inputs.AWS_DEFAULT_REGION }}
 
-      - name: Install packages for Terraform (mysql/psql clients)
-        # must use always() here for tf-apply-service dependancy
-        if: |
-          always() &&
-          (
-            (inputs.IMAGE_EXISTS == 'false' && inputs.BUILD_DOCKER_RESULT == 'success') ||
-            (inputs.IMAGE_EXISTS == 'true' && inputs.BUILD_DOCKER_RESULT == 'skipped')
-          )
-        run: |
-          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
-          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
-          sudo apt-get update
-          sudo apt-get install -y \
-            postgresql-client-14 \
-            mysql-client
-
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
-        # must use always() here for tf-apply-service dependancy
-        if: |
-          always() &&
-          (
-            (inputs.IMAGE_EXISTS == 'false' && inputs.BUILD_DOCKER_RESULT == 'success') ||
-            (inputs.IMAGE_EXISTS == 'true' && inputs.BUILD_DOCKER_RESULT == 'skipped')
-          )
+        # must use always() here for tf-apply-lambda dependancy
+        if: always()
         with:
           terraform_version: v1.3.7
           terraform_wrapper: false # Fix "/usr/bin/env: ‘node’: No such file or directory"
 
-      - name: Terraform init service '${{ matrix.service }}' on cluster '${{ inputs.CLUSTER }}' configuration
+      - name: Terraform init lambda '${{ matrix.lambda }}' on environment '${{ inputs.ENVIRONMENT }}' configuration
         id: tf-init
-        # must use always() here for tf-apply-service dependancy
-        if: |
-          always() &&
-          (
-            (inputs.IMAGE_EXISTS == 'false' && inputs.BUILD_DOCKER_RESULT == 'success') ||
-            (inputs.IMAGE_EXISTS == 'true' && inputs.BUILD_DOCKER_RESULT == 'skipped')
-          )
+        # must use always() here for tf-apply-lambda dependancy
+        if: always()
         env:
           GIT_SSH_COMMAND: "echo '${{ secrets.GH_TF_SSH_KEY }}' > id_rsa
             && ssh-keyscan github.com > known_hosts
             && chmod 600 id_rsa known_hosts
             && ssh -i ./id_rsa -o UserKnownHostsFile=./known_hosts"
-        working-directory: ./.terraform/services
+        working-directory: ./.terraform/lambdas
         run: |
-          cd ${{ matrix.service }}
+          cd ${{ matrix.lambda }}
           terraform version | head -1
-          terraform init -reconfigure -upgrade -backend-config=backend-${{ inputs.CLUSTER }}.conf
+          terraform init -reconfigure -upgrade -backend-config=backend-${{ inputs.ENVIRONMENT }}.conf
 
       - name: Terraform validate
         id: tf-validate
-        # must use always() here for tf-apply-service dependancy
+        # must use always() here for tf-apply-lambda dependancy
         if: |
           always() &&
-          steps.tf-init.conclusion != 'failure' &&
-          (
-            (inputs.IMAGE_EXISTS == 'false' && inputs.BUILD_DOCKER_RESULT == 'success') ||
-            (inputs.IMAGE_EXISTS == 'true' && inputs.BUILD_DOCKER_RESULT == 'skipped')
-          )
-        working-directory: ./.terraform/services
+          steps.tf-init.conclusion != 'failure'
+        working-directory: ./.terraform/lambdas
         run: |
           # To activate debug logs
           # export TF_LOG=debug
 
-          cd ${{ matrix.service }}
+          cd ${{ matrix.lambda }}
           terraform validate -no-color
 
-      - name: Terraform apply service '${{ matrix.service }}' on cluster '${{ inputs.CLUSTER }}'
-        id: tf-apply-service
+      - name: Terraform apply lambda '${{ matrix.lambda }}' on environment '${{ inputs.ENVIRONMENT }}'
+        id: tf-apply-lambda
         # using always() here will avoid cancellation in progress
         if: |
           always() &&
-          steps.tf-validate.conclusion != 'failure' &&
-          (
-            (inputs.IMAGE_EXISTS == 'false' && inputs.BUILD_DOCKER_RESULT == 'success') ||
-            (inputs.IMAGE_EXISTS == 'true' && inputs.BUILD_DOCKER_RESULT == 'skipped')
-          )
-        working-directory: ./.terraform/services
+          steps.tf-validate.conclusion != 'failure'
+        working-directory: ./.terraform/lambdas
         run: |
-          cd ${{ matrix.service }}
+          cd ${{ matrix.lambda }}
 
-          DOCKER_IMAGE_TAG=${{ inputs.IMAGE_SHA }}
-
-          if [ -z "${{ inputs.IMAGE_SHA }}" ]; then
-            DOCKER_IMAGE_TAG=${{ inputs.IMAGE_TAG }}
-          fi
-
-          echo "::debug title=Deploy service::Docker image tag is ${DOCKER_IMAGE_TAG}"
-
-          EXTRA_PARAMS=
-
-          if [ "${{ inputs.FORCE_DEPLOYMENT }}" == "true" ]; then
-            EXTRA_PARAMS="${EXTRA_PARAMS} -replace=module.${{ matrix.service }}-service.aws_ecs_task_definition.task"
-            echo "::debug title=Deploy service::Force deployment has been set"
-          fi
-
-          if [ ! -z "${{ env.DNS_PREFIX }}" ]; then
-            EXTRA_PARAMS="${EXTRA_PARAMS} -var "dns_prefix=${{ env.DNS_PREFIX }}""
-            echo "::debug title=Deploy service::A dns prefix has been set"
-          fi
-
-          echo "::notice title=Deploy service::Terraform is deploying '${{ matrix.service }}' on cluster '${{ inputs.CLUSTER }}'"
+          echo "::notice title=Deploy lambda::Terraform is deploying '${{ matrix.lambda }}' on environment '${{ inputs.ENVIRONMENT }}'"
 
           # To activate debug logs
           # export TF_LOG=debug
 
           terraform apply \
             -auto-approve \
-            -var-file terraform-${{ inputs.CLUSTER }}.tfvars \
-            -var "image_tag=${DOCKER_IMAGE_TAG}" \
-            -var "use_bastion_ssh_tunnel=false" \
-            ${FORCE_DEPLOY_PARAM}
+            -var-file terraform-${{ inputs.ENVIRONMENT }}.tfvars
 
       #--------------------------------------------------------
-
-      # Checkout reusable workflow to get bash scripts
-      - uses: actions/checkout@v3
-        with:
-          repository: Sonergia/github-reusable-workflows
-          ref: '2.x'
-          # ref: 'delivery' # Only when testing ############## /!\ ##############
-
-      - name: Monitor deployment
-        id: monitor-deployment
-        # if: ${{ steps.tf-apply-service.conclusion != 'failure' }}
-        run: ./.github/scripts/monitor-deployment.sh ${{ inputs.CLUSTER }} ${{ matrix.service }}
-
-      #--------------------------------------------------------
-
-      # Formerly deploy-status workflow that had to be merge to match matrix outputs
-      # cf https://sonergia.atlassian.net/browse/DEVOPS-177
 
       - name: Check deploy status
         id: check-deploy-status
         if: always()
         run: |
-          DEPLOY_STATUS=${{ steps.monitor-deployment.outputs.DEPLOY_STATUS }}
-          if [ -z "${DEPLOY_STATUS}" ]; then
-            echo "::warning title=Deploy status::DEPLOY_STATUS input is empty, defaults to 'error'"
+          if [ "${{ steps.tf-apply-lambda.conclusion}}" == "success" ] || [ "${{ steps.tf-apply-lambda.conclusion}}" == "failure" ]; then
+            DEPLOY_STATUS=${{ steps.tf-apply-lambda.conclusion}}
+          else
             DEPLOY_STATUS=error
           fi
           echo "DEPLOY_STATUS=${DEPLOY_STATUS}" >> ${GITHUB_OUTPUT}
@@ -283,8 +183,8 @@ jobs:
         if: always()
         run: |
           # Available env: development, testing, staging, or production
-          # See .jira/config.yml for environments mapping with our clusters
-          GITHUB_ENVIRONMENT=${{ inputs.CLUSTER }}
+          # See .jira/config.yml for environments mapping with our environments
+          GITHUB_ENVIRONMENT=${{ inputs.ENVIRONMENT }}
           echo "GITHUB_ENVIRONMENT=${GITHUB_ENVIRONMENT}" >> ${GITHUB_OUTPUT}
 
       - name: Change string case function
@@ -292,7 +192,7 @@ jobs:
         uses: ASzc/change-string-case-action@v5
         if: always()
         with:
-          string: ${{ inputs.CLUSTER }}
+          string: ${{ inputs.ENVIRONMENT }}
 
       - name: Create GitHub deployment
         id: github-deployment
@@ -303,15 +203,15 @@ jobs:
           # error, failure, in_progress, queued, pending, success, (inactive)
           initial-status: ${{ steps.check-deploy-status.outputs.DEPLOY_STATUS }}
           auto-inactive: false
-          task: deploy-${{ inputs.CLUSTER }}-${{ inputs.IMAGE_SHA }}
+          task: deploy-${{ inputs.ENVIRONMENT }}-${{ inputs.SHA_SHORT }}
           # Use log-url since JIRA does not display environment-url
-          # environment-url: http://${{ matrix.service }}.${{ inputs.CLUSTER }}.ecs
-          log-url: http://${{ matrix.service }}.${{ inputs.CLUSTER }}.ecs
-          # log-url: https://app.datadoghq.eu/logs?query=service:cloudwatch%20cluster:${{ inputs.CLUSTER }}%20%40service:${{ matrix.service }}
+          # environment-url: http://${{ matrix.lambda }}.${{ inputs.ENVIRONMENT }}.ecs
+          log-url: https://${{ inputs.AWS_DEFAULT_REGION }}.console.aws.amazon.com/lambda/home?region=${{ inputs.AWS_DEFAULT_REGION }}#/functions/${{ matrix.lambda }}-${{ inputs.ENVIRONMENT }}?tab=code
+          # log-url: https://app.datadoghq.eu/logs?query=service:cloudwatch%20environment:${{ inputs.ENVIRONMENT }}%20%40service:${{ matrix.lambda }}
           environment: ${{ steps.map-github-env.outputs.GITHUB_ENVIRONMENT }}
           # Specifies if the given environment is specific to the deployment and will no longer exist at some point in the future.
-          transient-environment: ${{ inputs.CLUSTER != 'prod' }}
-          description: ${{ matrix.service }} (${{ inputs.IMAGE_SHA }} / ${{ inputs.IMAGE_TAG }}) deployed on cluster ${{ inputs.CLUSTER }}
+          transient-environment: ${{ inputs.ENVIRONMENT != 'prod' }}
+          description: ${{ matrix.lambda }} (${{ inputs.SHA_SHORT }}) deployed on environment ${{ inputs.ENVIRONMENT }}
 
       - name: Deploy status style
         id: deploy-status-style
@@ -324,10 +224,10 @@ jobs:
             DEPLOY_STATUS="✅ ${DEPLOY_STATUS}"
             DEPLOY_COLOR=2cbe4e
           elif [ "${DEPLOY_STATUS}" == "failure" ]; then
-            DEPLOY_STATUS="❗${DEPLOY_STATUS} l'app ne démarre pas correctement et n'a pas pu être livrée (rollback) !"
+            DEPLOY_STATUS="❗${DEPLOY_STATUS}"
             DEPLOY_COLOR=ffc107
           elif [ "${DEPLOY_STATUS}" == "error" ]; then
-            DEPLOY_STATUS="❌ ${DEPLOY_STATUS} erreur de CICD, appelle un DevOps !"
+            DEPLOY_STATUS="❌ ${DEPLOY_STATUS}"
             DEPLOY_COLOR=cb2431
           fi
 
@@ -348,11 +248,8 @@ jobs:
         with:
           issue: ${{ inputs.JIRA_CODE }}
           comment: |
-            Ticket déployé sur le cluster ${{ steps.string.outputs.uppercase }}:
-              - [🔗 public](https://${{ matrix.service }}.${{ inputs.CLUSTER }}.sonergia.org)
-              - [🔗 privé](http://${{ matrix.service }}.${{ inputs.CLUSTER }}.ecs)
-              - [🐕 Datadog](https://app.datadoghq.eu/logs?query=cluster:${{ inputs.CLUSTER }}%20servicename:%22${{ inputs.SERVICE_NAMESPACE }}/${{ matrix.service }}%22&cols=privatedns,servicename)
-              - [📬 Mail](http://mail.${{ inputs.CLUSTER }}.ecs:1080)
+            Ticket déployé sur l'environnement ${{ steps.string.outputs.uppercase }}:
+              - [🔗 AWS Lambda](https://${{ inputs.AWS_DEFAULT_REGION }}.console.aws.amazon.com/lambda/home?region=${{ inputs.AWS_DEFAULT_REGION }}#/functions/${{ matrix.lambda }}-${{ inputs.ENVIRONMENT }}?tab=code)
 
       - name: Teams notification content
         id: teams-notification-content
@@ -376,7 +273,7 @@ jobs:
         with:
           github-token: ${{ github.token }}
           ms-teams-webhook-uri: ${{ secrets.MS_TEAMS_WEBHOOK_URI }}
-          notification-summary: Déploiement service ${{ matrix.service }} -> ${{ inputs.CLUSTER }} terminé !
+          notification-summary: Déploiement lambda ${{ matrix.lambda }} -> ${{ inputs.ENVIRONMENT }} terminé !
           notification-color: ${{ steps.deploy-status-style.outputs.DEPLOY_COLOR }}
           timezone: Europe/Paris
           # view-commit-changes: true
@@ -385,10 +282,10 @@ jobs:
           custom-facts: |
             - name: Status
               value: ${{ steps.deploy-status-style.outputs.DEPLOY_STATUS }}
-            - name: Cluster
+            - name: Environnement
               value: ${{ steps.string.outputs.uppercase }}
-            - name: Service
-              value: ${{ matrix.service }}
+            - name: Lambda
+              value: ${{ matrix.lambda }}
             - name: 📖 Commit
               value: "[${{ steps.git-commit.outputs.COMMIT_MESSAGE }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})"
             - name: 📕 Branche
@@ -398,14 +295,8 @@ jobs:
             - name: 📋 ${{ steps.teams-notification-content.outputs.CUSTOM_FACT_JIRA_RELEASE_NAME }}
               value: "${{ steps.teams-notification-content.outputs.CUSTOM_FACT_JIRA_RELEASE }}"
           custom-actions: | # Max 5 actions
-            - text: 🔗 privé
-              url: "http://${{ matrix.service }}.${{ inputs.CLUSTER }}.ecs"
-            - text: 🔗 public
-              url: "https://${{ matrix.service }}.${{ inputs.CLUSTER }}.sonergia.org"
-            - text: 🐕 Datadog
-              url: "https://app.datadoghq.eu/logs?query=cluster:${{ inputs.CLUSTER }}%20servicename:%22${{ inputs.SERVICE_NAMESPACE }}/${{ matrix.service }}%22&cols=privatedns,servicename"
-            - text: 📬 Mail
-              url: "http://mail.${{ inputs.CLUSTER }}.ecs:1080"
+            - text: 🔗 AWS Lambda
+              url: "https://${{ inputs.AWS_DEFAULT_REGION }}.console.aws.amazon.com/lambda/home?region=${{ inputs.AWS_DEFAULT_REGION }}#/functions/${{ matrix.lambda }}-${{ inputs.ENVIRONMENT }}?tab=code"
 
       - name: Exit if deploy failed
         if: always()

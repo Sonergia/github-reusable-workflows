@@ -1,4 +1,4 @@
-name: Check context (ECR, git...)
+name: Check lambda context (git...)
 
 on:
   workflow_call:
@@ -6,18 +6,20 @@ on:
       AWS_DEFAULT_REGION:
         required: true
         type: string
-      CLUSTER:
+      ENVIRONMENT:
         required: true
         type: string
-      SERVICE_NAMESPACE:
+      LAMBDA_NAMESPACE:
         required: true
         type: string
-      SERVICES:
+      LAMBDAS:
         required: true
         type: string
-      IMAGE_NAMES:
-        required: true
+      IS_LEGACY:
+        description: "Indicates if target infra is legacy EC2 (DEVELOPMENT/NOTPROD/PROD envs)"
+        required: false
         type: string
+        default: 'false'
       SHA_SHORT:
         description: "Git commit SHA short (without 'sha-' prefix)"
         required: false
@@ -39,34 +41,18 @@ on:
       SHA_SHORT:
         description: "Define SHA_SHORT from input or current git commit SHA"
         value: ${{ jobs.check-context.outputs.SHA_SHORT }}
-      IMAGE_SHA:
-        description: "Define IMAGE_SHA from input or current git commit SHA"
-        value: ${{ jobs.check-context.outputs.IMAGE_SHA }}
-      IMAGE_EXISTS:
-        description: "Indicate if Docker image already exists in ECR for current git commit SHA"
-        value: ${{ jobs.check-context.outputs.IMAGE_EXISTS }}
-      CLUSTER:
+      ENVIRONMENT:
         description: "Cluster name to deploy onto (test, release, prod)"
-        value: ${{ jobs.check-context.outputs.CLUSTER }}
+        value: ${{ jobs.check-context.outputs.ENVIRONMENT }}
       JIRA_CODE:
         description: "JIRA ticket code found in branch name"
         value: ${{ jobs.check-context.outputs.JIRA_CODE }}
-      IMAGE_TAG:
-        description: "Docker image tag"
-        value: ${{ jobs.check-context.outputs.IMAGE_TAG }}
-      CREATE_TAG_LATEST:
-        description: "Docker image should be tag as latest"
-        value: ${{ jobs.check-context.outputs.CREATE_TAG_LATEST }}
 
 jobs:
   check-context:
     name: Check context
     runs-on: ubuntu-latest
     timeout-minutes: 5
-
-    # strategy:
-    #   matrix:
-    #     image_name: ${{ fromJson(inputs.IMAGE_NAMES) }}
 
     steps:
       - uses: actions/checkout@v3
@@ -90,7 +76,6 @@ jobs:
 
           echo "::notice title=Check GIT SHA::GIT SHA output value is '${SHA_SHORT}'"
           echo "SHA_SHORT=${SHA_SHORT}" >> ${GITHUB_OUTPUT}
-          echo "IMAGE_SHA=sha-${SHA_SHORT}" >> ${GITHUB_OUTPUT}
 
       # Get commit message before checking out reusable workflows
       - name: Git output commit message
@@ -107,38 +92,19 @@ jobs:
           ref: '2.x'
           # ref: 'delivery' # Only when testing ############## /!\ ##############
 
-      - name: Install packages (jq)
-        run: |
-          sudo apt-get -y install jq
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_TF }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_TF }}
-          aws-region: ${{ inputs.AWS_DEFAULT_REGION }}
-
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v1
-
-      - name: Check if image SHA tag and release tag already exists in ECR, add release tag otherwise
-        id: check-image-ecr
-        run: ./.github/scripts/check-image-ecr.sh ${{ inputs.SERVICE_NAMESPACE }} "${{ join(fromJson(inputs.IMAGE_NAMES), ' ') }}" ${{ steps.git-sha.outputs.IMAGE_SHA }}
-
       - name: Set context from git and inputs
         id: set-context
         run: |
-          ENVIRONMENT="${{ inputs.CLUSTER }}"
-          IS_LAMBDA="false"
-          IS_LEGACY="false"
+          ENVIRONMENT="${{ inputs.ENVIRONMENT }}"
+          IS_LAMBDA="true"
+          IS_LEGACY="${{ inputs.IS_LEGACY }}"
           ./.github/scripts/set-context.sh ${ENVIRONMENT} ${IS_LAMBDA} ${IS_LEGACY}
 
       - name: Change string case function
         id: string
         uses: ASzc/change-string-case-action@v5
         with:
-          string: ${{ steps.set-context.outputs.CLUSTER }}
+          string: ${{ steps.set-context.outputs.ENVIRONMENT }}
 
       - name: Teams notification content
         id: teams-notification-content
@@ -161,7 +127,7 @@ jobs:
         with:
           github-token: ${{ github.token }}
           ms-teams-webhook-uri: ${{ secrets.MS_TEAMS_WEBHOOK_URI }}
-          notification-summary: Déploiement service(s) ${{ join(fromJson(inputs.SERVICES), ',') }} -> ${{ steps.set-context.outputs.CLUSTER }} en cours...
+          notification-summary: Déploiement lambda(s) ${{ join(fromJson(inputs.LAMBDAS), ',') }} -> ${{ steps.set-context.outputs.ENVIRONMENT }} en cours...
           notification-color: 999999
           timezone: Europe/Paris
           # view-commit-changes: true
@@ -170,10 +136,10 @@ jobs:
           custom-facts: |
             - name: Status
               value: ⏱ in progress...
-            - name: Cluster
+            - name: Environnement
               value: ${{ steps.string.outputs.uppercase }}
-            - name: Service(s)
-              value: ${{ join(fromJson(inputs.SERVICES), ',') }}
+            - name: Lambda(s)
+              value: ${{ join(fromJson(inputs.LAMBDAS), ',') }}
             - name: 📖 Commit
               value: "[${{ steps.git-commit.outputs.COMMIT_MESSAGE }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})"
             - name: 📕 Branche
@@ -182,15 +148,11 @@ jobs:
               value: "[Run #${{ github.run_attempt }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
             - name: 📋 ${{ steps.teams-notification-content.outputs.CUSTOM_FACT_JIRA_RELEASE_NAME }}
               value: "${{ steps.teams-notification-content.outputs.CUSTOM_FACT_JIRA_RELEASE }}"
-          custom-actions: | # Max 5 actions
-            - text: 🐕 Datadog
-              url: "https://app.datadoghq.eu/logs?query=cluster:${{ steps.set-context.outputs.CLUSTER }}%20namespace:${{ inputs.SERVICE_NAMESPACE }}&cols=privatedns,servicename"
+          # custom-actions: | # Max 5 actions
+          #   - text: 🐕 Datadog
+          #     url: "https://app.datadoghq.eu/logs?query=env:${{ steps.set-context.outputs.ENVIRONMENT }}%20namespace:${{ inputs.LAMBDA_NAMESPACE }}&cols=privatedns,servicename"
 
     outputs:
       SHA_SHORT: ${{ steps.git-sha.outputs.SHA_SHORT }}
-      IMAGE_SHA: ${{ steps.git-sha.outputs.IMAGE_SHA }}
-      IMAGE_EXISTS: ${{ steps.check-image-ecr.outputs.IMAGE_EXISTS }}
-      CLUSTER: ${{ steps.set-context.outputs.CLUSTER }}
+      ENVIRONMENT: ${{ steps.set-context.outputs.ENVIRONMENT }}
       JIRA_CODE: ${{ steps.set-context.outputs.JIRA_CODE }}
-      IMAGE_TAG: ${{ steps.set-context.outputs.IMAGE_TAG }}
-      CREATE_TAG_LATEST: ${{ steps.set-context.outputs.CREATE_TAG_LATEST }}
