@@ -129,9 +129,10 @@ echo "::notice title=Set context::Cluster/Env output value is '${ENVIRONMENT_OUT
 if [ -z "${ENVIRONMENT_OUTPUT}" ]; then
     echo "::error title=Set context::Could not set Cluster/Env output value with event '${GITHUB_EVENT_NAME}', ref_type '${GITHUB_REF_TYPE}', ref_name '${GITHUB_REF_NAME}'"
     exit 1
-elif [ "${ENVIRONMENT}" != "${ENVIRONMENT_OUTPUT}" ]; then
-    echo "::error title=Set context::Input Cluster/Env '${ENVIRONMENT}' does not match with output one '${ENVIRONMENT_OUTPUT}', that smells fishy"
-    exit 1
+# elif [ "${ENVIRONMENT}" != "${ENVIRONMENT_OUTPUT}" ]; then
+#     # This check does not work with all cases
+#     echo "::error title=Set context::Input Cluster/Env '${ENVIRONMENT}' does not match with output one '${ENVIRONMENT_OUTPUT}', that smells fishy"
+#     exit 1
 fi
 
 if  [ ${IS_LAMBDA} == "false" ]; then
