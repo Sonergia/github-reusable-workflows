@@ -77,7 +77,7 @@ function getJiraCodeFromBranch {
 
 # /!\ This script mixes logic from new ECS infra and legacy EC2 infra
 # Start script
-ENVIRONMENT=${1:?"ENVIRONMENT param is required"}
+ENVIRONMENT=${1:-"test"}
 IS_LAMBDA=${2:-"false"}
 IS_LEGACY=${3:-"false"}
 CREATE_TAG_LATEST="false"
@@ -88,6 +88,16 @@ echo "::notice title=Set context::GitHub context event '${GITHUB_EVENT_NAME}', r
 # Parameters checks
 if [ ${IS_LAMBDA} == "false" ] && [ ${IS_LEGACY} == "true" ]; then
     echo "::error title=Set context::Not implemented case SERVICE+LEGACY"
+    exit 1
+fi
+
+if [ -z ${IS_LAMBDA} ]; then
+    echo "::error title=Set context::IS_LAMBDA flag can not be empty"
+    exit 1
+fi
+
+if [ -z ${IS_LEGACY} ]; then
+    echo "::error title=Set context::IS_LEGACY flag can not be empty"
     exit 1
 fi
 
