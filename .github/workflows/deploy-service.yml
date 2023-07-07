@@ -246,7 +246,7 @@ jobs:
             -var-file terraform-${{ inputs.CLUSTER }}.tfvars \
             -var "image_tag=${DOCKER_IMAGE_TAG}" \
             -var "use_bastion_ssh_tunnel=false" \
-            ${FORCE_DEPLOY_PARAM}
+            ${EXTRA_PARAMS}
 
       #--------------------------------------------------------
 
