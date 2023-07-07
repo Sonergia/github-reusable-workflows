@@ -98,7 +98,7 @@ jobs:
           ENVIRONMENT="${{ inputs.ENVIRONMENT }}"
           IS_LAMBDA="true"
           IS_LEGACY="${{ inputs.IS_LEGACY }}"
-          ./.github/scripts/set-context.sh ${ENVIRONMENT} ${IS_LAMBDA} ${IS_LEGACY}
+          ./.github/scripts/set-context.sh "${ENVIRONMENT}" "${IS_LAMBDA}" "${IS_LEGACY}"
 
       - name: Change string case function
         id: string

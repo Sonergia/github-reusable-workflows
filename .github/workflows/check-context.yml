@@ -132,7 +132,7 @@ jobs:
           ENVIRONMENT="${{ inputs.CLUSTER }}"
           IS_LAMBDA="false"
           IS_LEGACY="false"
-          ./.github/scripts/set-context.sh ${ENVIRONMENT} ${IS_LAMBDA} ${IS_LEGACY}
+          ./.github/scripts/set-context.sh "${ENVIRONMENT}" "${IS_LAMBDA}" "${IS_LEGACY}"
 
       - name: Change string case function
         id: string

@@ -86,7 +86,7 @@ echo "::debug title=Set context::Parameters ${*}"
 echo "::notice title=Set context::GitHub context event '${GITHUB_EVENT_NAME}', ref_type '${GITHUB_REF_TYPE}', ref_name '${GITHUB_REF_NAME}'"
 
 # Parameters checks
-if [ ${IS_LAMBDA} == "false" ] && [ ${IS_LEGACY} == "true" ]; then
+if [ ${IS_LAMBDA} = "false" ] && [ ${IS_LEGACY} = "true" ]; then
     echo "::error title=Set context::Not implemented case SERVICE+LEGACY"
     exit 1
 fi
@@ -102,18 +102,18 @@ if [ -z ${IS_LEGACY} ]; then
 fi
 
 # Manual case uses image static tag
-if  [ ${GITHUB_EVENT_NAME} == "workflow_dispatch" ]; then
+if  [ ${GITHUB_EVENT_NAME} = "workflow_dispatch" ]; then
     getJiraCodeFromBranch
     IMAGE_TAG=${JIRA_CODE}
-    ENVIRONMENT_OUTPUT=$([ "${IS_LEGACY}" == "true" ] && echo "development" || echo "test")
-elif  [ ${GITHUB_REF_TYPE} == "tag" ] && [ ${GITHUB_EVENT_NAME} == "release" ]; then
+    ENVIRONMENT_OUTPUT=$([ "${IS_LEGACY}" = "true" ] && echo "development" || echo "test")
+elif  [ ${GITHUB_REF_TYPE} = "tag" ] && [ ${GITHUB_EVENT_NAME} = "release" ]; then
     # Tag git
     IMAGE_TAG=${GITHUB_REF_NAME}
 
     if [[ $(echo ${GITHUB_REF_NAME} | grep -P '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$') ]]; then
         # SemVer with suffix (1.0.0-alpha.1)
-        # if [ "${IS_LEGACY}" == "true" ]; then ENVIRONMENT_OUTPUT="notprod"; else ENVIRONMENT_OUTPUT="release"; fi
-        ENVIRONMENT_OUTPUT=$([ "${IS_LEGACY}" == "true" ] && echo "notprod" || echo "release")
+        # if [ "${IS_LEGACY}" = "true" ]; then ENVIRONMENT_OUTPUT="notprod"; else ENVIRONMENT_OUTPUT="release"; fi
+        ENVIRONMENT_OUTPUT=$([ "${IS_LEGACY}" = "true" ] && echo "notprod" || echo "release")
     elif [[ $(echo ${GITHUB_REF_NAME} | grep -P '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$') ]]; then
         # SemVer without suffix (1.0.0)
         ENVIRONMENT_OUTPUT=prod
@@ -123,11 +123,11 @@ elif  [ ${GITHUB_REF_TYPE} == "tag" ] && [ ${GITHUB_EVENT_NAME} == "release" ]; 
         echo "::error title=Set context::Could not set Cluster/Env with ref_type '${GITHUB_REF_TYPE}' and ref_name '${GITHUB_REF_NAME}'"
         exit 1
     fi
-elif [ ${GITHUB_REF_TYPE} == "branch" ] && [ ${GITHUB_EVENT_NAME} == "pull_request" ]; then
+elif [ ${GITHUB_REF_TYPE} = "branch" ] && [ ${GITHUB_EVENT_NAME} = "pull_request" ]; then
     getJiraCodeFromBranch
     IMAGE_TAG=${JIRA_CODE}
-    # if [ "${IS_LEGACY}" == "true" ]; then ENVIRONMENT_OUTPUT="development"; else ENVIRONMENT_OUTPUT="test"; fi
-    ENVIRONMENT_OUTPUT=$([ "${IS_LEGACY}" == "true" ] && echo "development" || echo "test")
+    # if [ "${IS_LEGACY}" = "true" ]; then ENVIRONMENT_OUTPUT="development"; else ENVIRONMENT_OUTPUT="test"; fi
+    ENVIRONMENT_OUTPUT=$([ "${IS_LEGACY}" = "true" ] && echo "development" || echo "test")
 else
     echo "::error title=Set context::Not implemented case with event '${GITHUB_EVENT_NAME}' and ref_type '${GITHUB_REF_TYPE}'"
     exit 1
@@ -145,7 +145,7 @@ if [ -z "${ENVIRONMENT_OUTPUT}" ]; then
 #     exit 1
 fi
 
-if  [ ${IS_LAMBDA} == "false" ]; then
+if  [ ${IS_LAMBDA} = "false" ]; then
     echo "::notice title=Set context::Image tag output value is '${IMAGE_TAG}'"
     echo "::notice title=Set context::Create tag latest is '${CREATE_TAG_LATEST}'"
 
