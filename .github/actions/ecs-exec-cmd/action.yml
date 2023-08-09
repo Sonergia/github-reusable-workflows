@@ -1,0 +1,76 @@
+name: ECS exec command
+description: Execute an arbitrary command in a running container on ECS Fargate using "aws ecs execute-command"
+
+inputs:
+  AWS_ACCESS_KEY_ID_TF:
+    required: true
+    type: string
+  AWS_SECRET_ACCESS_KEY_TF:
+    required: true
+    type: string
+  AWS_DEFAULT_REGION:
+    required: true
+    type: string
+  CLUSTER:
+    required: true
+    type: string
+  SERVICE:
+    required: true
+    type: string
+  CONTAINER:
+    required: true
+    type: string
+  COMMAND:
+    required: true
+    type: string
+
+# Map the workflow outputs to job outputs
+# outputs:
+#   COMMAND_RESULT:
+#     description: "Result or status of executed command"
+#     value: ${{ jobs.check-context.outputs.SHA_SHORT }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install AWS session manager plugin
+      id: session-manager-plugin
+      shell: bash
+      run: |
+        curl "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb" \
+          -o "session-manager-plugin.deb"
+        sudo dpkg -i session-manager-plugin.deb
+        rm -f session-manager-plugin.deb
+
+    - name: Install unbuffer
+      shell: bash
+      run: |
+        sudo apt-get install -y expect
+
+    # Checkout reusable workflow to get bash scripts
+    - uses: actions/checkout@v3
+      with:
+        repository: Sonergia/github-reusable-workflows
+        ref: '2.x'
+        # ref: 'delivery' # Only when testing ############## /!\ ##############
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ inputs.AWS_ACCESS_KEY_ID_TF }}
+        aws-secret-access-key: ${{ inputs.AWS_SECRET_ACCESS_KEY_TF }}
+        aws-region: ${{ inputs.AWS_DEFAULT_REGION }}
+
+    - name: ECS exec command
+      id: ecs-exec-command
+      shell: bash
+      run: |
+        CLUSTER=${{ inputs.CLUSTER }}
+        SERVICE=${{ inputs.SERVICE }}
+        CONTAINER=${{ inputs.CONTAINER }}
+        COMMAND="${{ inputs.COMMAND }}"
+
+        ./.github/scripts/ecs-exec-cmd.sh "${CLUSTER}" "${SERVICE}" "${CONTAINER}" "${COMMAND}"
+
+  # outputs:
+  #   COMMAND_RESULT: ${{ steps.ecs-exec-command.COMMAND_RESULT }}
