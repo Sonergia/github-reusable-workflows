@@ -1,0 +1,205 @@
+name: Microsoft Teams notification
+description: Send formatted notification in given MS Teams channel (must already exists)
+
+inputs:
+  MS_TEAMS_WEBHOOK_URI:
+    required: true
+    type: string
+  ENVIRONMENT: # aka CLUSTER
+    description: 'Environment / cluster name'
+    required: true
+    type: string
+  SUMMARY:
+    description: 'Notification summary'
+    required: true
+    type: string
+    # ex: Déploiement service(s) ${{ join(fromJson(inputs.SERVICES), ',') }} -> ${{ inputs.ENVIRONMENT }} en cours...
+    # ex: Déploiement service ${{ matrix.service }} -> ${{ inputs.CLUSTER }} terminé !
+  COLOR:
+    description: 'Notification color in hexa (ex: FF0000)'
+    required: true
+    type: string
+  COMMIT_MESSAGE:
+    description: 'Commit message (optional)'
+    required: false
+    type: string
+  JIRA_CODE:
+    description: 'Jira issue code for integration (optional)'
+    required: false
+    type: string
+  FACT_STATUS:
+    description: 'Workflow status: starting, in progress, error, failure, success...'
+    required: true
+    type: string
+    # ex: ⏱ en cours
+  FACT_TYPE_NAME:
+    description: 'Workflow type: service, lambda, asset, database...'
+    required: true
+    type: string
+    # ex: Service(s) / Service
+    # ex: Lambda(s) / Lambda
+    # ex: Assets(s) / Asset
+    # ex: Database(s) / Database
+  FACT_TYPE_VALUE:
+    description: 'Workflow type value'
+    required: true
+    type: string
+    # ex: ${{ join(fromJson(inputs.SERVICES), ',') }}
+    # ex: ${{ matrix.service }}
+  ACTION_PRIVATE_URL:
+    required: false
+    type: string
+    # ex: "http://${{ matrix.service }}.${{ inputs.CLUSTER }}.ecs"
+  ACTION_PUBLIC_URL:
+    required: false
+    type: string
+    # ex: "https://${{ matrix.service }}.${{ inputs.CLUSTER }}.sonergia.org"
+  ACTION_DATADOG_URL:
+    required: false
+    type: string
+    # ex: "https://app.datadoghq.eu/logs?query=cluster:${{ inputs.ENVIRONMENT }}%20namespace:${{ inputs.SERVICE_NAMESPACE }}&cols=privatedns,servicename"
+    # ex: "https://app.datadoghq.eu/logs?query=cluster:${{ inputs.CLUSTER }}%20servicename:%22${{ inputs.SERVICE_NAMESPACE }}/${{ matrix.service }}%22&cols=privatedns,servicename"
+  ACTION_MAIL_URL:
+    required: false
+    type: string
+    # ex: "http://mail.${{ inputs.CLUSTER }}.ecs:1080"
+  ACTION_AWS_URL:
+    required: false
+    type: string
+    # ex: "https://${{ inputs.AWS_DEFAULT_REGION }}.console.aws.amazon.com/lambda/home?region=${{ inputs.AWS_DEFAULT_REGION }}#/functions/${{ matrix.lambda }}-${{ inputs.ENVIRONMENT }}?tab=code"
+
+runs:
+  using: composite
+  steps:
+    - name: Uppercase string
+      id: uppercase
+      shell: bash
+      run: |
+        ENVIRONMENT=$(echo "${{ inputs.ENVIRONMENT }}" | tr a-z A-Z)
+        echo "ENVIRONMENT=${ENVIRONMENT}" >> ${GITHUB_OUTPUT}
+
+    - name: Common custom facts
+      id: common-custom-facts
+      shell: bash
+      run: |
+        CUSTOM_FACTS=$(cat <<EOF
+          [
+            {
+              "name": "Status",
+              "value": "${{ inputs.FACT_STATUS }}"
+            },
+            {
+              "name": "Env/Cluster",
+              "value": "${{ steps.uppercase.outputs.ENVIRONMENT }}"
+            },
+            {
+              "name": "${{ inputs.FACT_TYPE_NAME }}",
+              "value": "${{ inputs.FACT_TYPE_VALUE }}"
+            }
+          ]
+        EOF
+        )
+
+        # Minify JSON (one line)
+        CUSTOM_FACTS=$(echo "${CUSTOM_FACTS}" | jq -c)
+        echo "CUSTOM_FACTS=${CUSTOM_FACTS}" >> ${GITHUB_OUTPUT}
+
+    # You can use markdown: https://support.microsoft.com/en-us/office/use-markdown-formatting-in-teams-4d10bd65-55e2-4b2d-a1f3-2bebdcd2c772
+    - name: Build custom facts
+      id: build-custom-facts
+      shell: bash
+      run: |
+        CUSTOM_FACTS='${{ steps.common-custom-facts.outputs.CUSTOM_FACTS }}'
+
+        # Commit
+        if [ ! -z "${{ inputs.COMMIT_MESSAGE }}" ]; then
+          FACT_COMMIT_LINK="[${{ inputs.COMMIT_MESSAGE }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})"
+          CUSTOM_FACTS=$(echo "${CUSTOM_FACTS}" | jq '. += [{"name": "📖 Commit","value": "'"${FACT_COMMIT_LINK}"'"}]')
+        fi
+
+        # Branch
+        FACT_BRANCH_LINK="[${{ github.ref_name }}](${{ github.server_url }}/${{ github.repository }}/tree/${{ github.ref }})"
+        CUSTOM_FACTS=$(echo "${CUSTOM_FACTS}" | jq '. += [{"name": "📕 Branche","value": "'"${FACT_BRANCH_LINK}"'"}]')
+
+        # CICD Workflow
+        FACT_WORKFLOW_LINK="[Run #${{ github.run_attempt }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+        CUSTOM_FACTS=$(echo "${CUSTOM_FACTS}" | jq '. += [{"name": "🔧 CI/CD","value": "'"${FACT_WORKFLOW_LINK}"'"}]')
+
+        # Release / Jira issue
+        FACT_RELEASE_NAME=
+
+        if [ ! -z "${{ inputs.JIRA_CODE }}" ]; then
+          FACT_RELEASE_NAME=Jira
+          FACT_RELEASE_LINK="[${{ inputs.JIRA_CODE }}](https://sonergia.atlassian.net/browse/${{ inputs.JIRA_CODE }})"
+        elif [ ${{ github.event_name }} == release ]; then
+          FACT_RELEASE_NAME=Release
+          FACT_RELEASE_LINK="[${{ github.ref_name }}](${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }})"
+        fi
+
+        if [ ! -z ${FACT_RELEASE_NAME} ]; then
+          CUSTOM_FACTS=$(echo "${CUSTOM_FACTS}" | jq '. += [{"name": "'"${FACT_RELEASE_NAME}"'","value": "'"${FACT_RELEASE_LINK}"'"}]')
+        fi
+
+        # Minify JSON (one line)
+        CUSTOM_FACTS=$(echo "${CUSTOM_FACTS}" | jq -c)
+        echo "CUSTOM_FACTS=${CUSTOM_FACTS}" >> ${GITHUB_OUTPUT}
+
+    - name: Build custom actions
+      id: build-custom-actions
+      shell: bash
+      run: |
+        # Max 5 actions
+        CUSTOM_ACTIONS="[]"
+
+        # Private url
+        if [ ! -z "${{ inputs.ACTION_PRIVATE_URL }}" ]; then
+          CUSTOM_ACTIONS=$(echo "${CUSTOM_ACTIONS}" | jq '. += [{"text": "🔗 privé","url": "${{ inputs.ACTION_PRIVATE_URL }}"}]')
+        fi
+
+        # Public url
+        if [ ! -z "${{ inputs.ACTION_PUBLIC_URL }}" ]; then
+          CUSTOM_ACTIONS=$(echo "${CUSTOM_ACTIONS}" | jq '. += [{"text": "🔗 public","url": "${{ inputs.ACTION_PUBLIC_URL }}"}]')
+        fi
+
+        # Datadog
+        if [ ! -z "${{ inputs.ACTION_DATADOG_URL }}" ]; then
+          CUSTOM_ACTIONS=$(echo "${CUSTOM_ACTIONS}" | jq '. += [{"text": "🐕 Datadog","url": "${{ inputs.ACTION_DATADOG_URL }}"}]')
+        fi
+
+        # Mail
+        if [ ! -z "${{ inputs.ACTION_MAIL_URL }}" ]; then
+          CUSTOM_ACTIONS=$(echo "${CUSTOM_ACTIONS}" | jq '. += [{"text": "📬 Mail","url": "${{ inputs.ACTION_MAIL_URL }}"}]')
+        fi
+
+        # AWS console link
+        if [ ! -z "${{ inputs.ACTION_AWS_URL }}" ]; then
+          CUSTOM_ACTIONS=$(echo "${CUSTOM_ACTIONS}" | jq '. += [{"text": "☁️ AWS console","url": "${{ inputs.ACTION_AWS_URL }}"}]')
+        fi
+
+        # Minify JSON (one line)
+        CUSTOM_ACTIONS=$(echo "${CUSTOM_ACTIONS}" | jq -c)
+        echo "CUSTOM_ACTIONS=${CUSTOM_ACTIONS}" >> ${GITHUB_OUTPUT}
+
+    - name: Notify teams channel
+      if : always()
+      uses: Sonergia/ms-teams-notification@add-potential-action
+      with:
+        github-token: ${{ github.token }}
+        ms-teams-webhook-uri: ${{ inputs.MS_TEAMS_WEBHOOK_URI }}
+        notification-summary: ${{ inputs.SUMMARY }}
+        notification-color: ${{ inputs.COLOR }}
+        timezone: Europe/Paris
+        # view-commit-changes: true
+        # view-workflow-run: true
+        # view-pull-request: false
+        # custom-facts: look out for the pipe symbol (|).
+        # Github Actions only accept string, number, and boolean as parameters on job steps.
+        # To bypass this restriction and to instill YAML list formatting,
+        # we have to set it with a YAML-parseable multiline string containing
+        # a YAML list of objects with name and value on custom-facts,
+        # text and url (i.e. must be a valid URI format) on custom-actions.
+        # If there is an error in YAML parsing, no custom facts/actions will be appended.
+        custom-facts: |
+          ${{ steps.build-custom-facts.outputs.CUSTOM_FACTS }}
+        custom-actions: |
+          ${{ steps.build-custom-actions.outputs.CUSTOM_ACTIONS }}
