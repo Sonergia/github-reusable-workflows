@@ -65,12 +65,12 @@ jobs:
 
       - name: Download build artifact
         uses: actions/download-artifact@v3
-        if: ${{ steps.check-build-artifact.outputs.exists == 'true' }}
+        if: steps.check-build-artifact.outputs.exists == 'true'
         with:
           name: build-artifact
 
       - name: Untar and delete build archive
-        if: ${{ steps.check-build-artifact.outputs.exists == 'true' }}
+        if: steps.check-build-artifact.outputs.exists == 'true'
         run: tar -xvf build.tar && rm build.tar
 
       - name: Docker meta

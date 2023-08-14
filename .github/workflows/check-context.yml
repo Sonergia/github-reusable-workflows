@@ -70,7 +70,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
-        if: ${{ inputs.SHA_SHORT == '' }}
+        if: inputs.SHA_SHORT == ''
 
         # Get commit SHA before checking out reusable workflows
       - name: Git output SHA short
@@ -134,57 +134,22 @@ jobs:
           IS_LEGACY="false"
           ./.github/scripts/set-context.sh "${ENVIRONMENT}" "${IS_LAMBDA}" "${IS_LEGACY}"
 
-      - name: Change string case function
-        id: string
-        uses: ASzc/change-string-case-action@v5
-        with:
-          string: ${{ steps.set-context.outputs.CLUSTER }}
-
-      - name: Teams notification content
-        id: teams-notification-content
-        if: ${{ always() && inputs.NOTIFICATIONS_TEAMS == 'true' }}
-        run: |
-          if [ ! -z "${{ steps.set-context.outputs.JIRA_CODE }}" ]; then
-            CUSTOM_FACT_JIRA_RELEASE_NAME=Jira
-            CUSTOM_FACT_JIRA_RELEASE="[${{ steps.set-context.outputs.JIRA_CODE }}](https://sonergia.atlassian.net/browse/${{ steps.set-context.outputs.JIRA_CODE }})"
-          else
-            CUSTOM_FACT_JIRA_RELEASE_NAME=Release
-            CUSTOM_FACT_JIRA_RELEASE="[${{ github.ref_name }}](${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }})"
-          fi
-          echo "CUSTOM_FACT_JIRA_RELEASE_NAME=${CUSTOM_FACT_JIRA_RELEASE_NAME}" >> ${GITHUB_OUTPUT}
-          echo "CUSTOM_FACT_JIRA_RELEASE=${CUSTOM_FACT_JIRA_RELEASE}" >> ${GITHUB_OUTPUT}
-
       # Notify at the start of workflow
       - name: Notify teams channel
-        uses: Sonergia/ms-teams-notification@add-potential-action
-        if: ${{ always() && inputs.NOTIFICATIONS_TEAMS == 'true' }}
+        if: always() && inputs.NOTIFICATIONS_TEAMS == 'true'
+        uses: sonergia/github-reusable-workflows/.github/actions/ms-teams-notification@2.x
         with:
-          github-token: ${{ github.token }}
-          ms-teams-webhook-uri: ${{ secrets.MS_TEAMS_WEBHOOK_URI }}
-          notification-summary: Déploiement service(s) ${{ join(fromJson(inputs.SERVICES), ',') }} -> ${{ steps.set-context.outputs.CLUSTER }} en cours...
-          notification-color: 999999
-          timezone: Europe/Paris
-          # view-commit-changes: true
-          # view-workflow-run: true
-          # view-pull-request: false
-          custom-facts: |
-            - name: Status
-              value: ⏱ in progress...
-            - name: Cluster
-              value: ${{ steps.string.outputs.uppercase }}
-            - name: Service(s)
-              value: ${{ join(fromJson(inputs.SERVICES), ',') }}
-            - name: 📖 Commit
-              value: "[${{ steps.git-commit.outputs.COMMIT_MESSAGE }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})"
-            - name: 📕 Branche
-              value: "[${{ github.ref_name }}](${{ github.server_url }}/${{ github.repository }}/tree/${{ github.ref }})"
-            - name: 🔧 CI/CD
-              value: "[Run #${{ github.run_attempt }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
-            - name: 📋 ${{ steps.teams-notification-content.outputs.CUSTOM_FACT_JIRA_RELEASE_NAME }}
-              value: "${{ steps.teams-notification-content.outputs.CUSTOM_FACT_JIRA_RELEASE }}"
-          custom-actions: | # Max 5 actions
-            - text: 🐕 Datadog
-              url: "https://app.datadoghq.eu/logs?query=cluster:${{ steps.set-context.outputs.CLUSTER }}%20namespace:${{ inputs.SERVICE_NAMESPACE }}&cols=privatedns,servicename"
+          MS_TEAMS_WEBHOOK_URI: ${{ secrets.MS_TEAMS_WEBHOOK_URI }}
+          ENVIRONMENT: ${{ steps.set-context.outputs.CLUSTER }}
+          SUMMARY: Déploiement service(s) ${{ join(fromJson(inputs.SERVICES), ',') }} -> ${{ steps.set-context.outputs.CLUSTER }} en cours...
+          COLOR: 999999
+          COMMIT_MESSAGE: ${{ steps.git-commit.outputs.COMMIT_MESSAGE }}
+          JIRA_CODE: ${{ steps.set-context.outputs.JIRA_CODE }}
+          FACT_STATUS: ⏱ in progress...
+          FACT_TYPE_NAME: Service(s)
+          FACT_TYPE_VALUE: ${{ join(fromJson(inputs.SERVICES), ',') }}
+          ACTION_DATADOG_URL: "https://app.datadoghq.eu/logs?query=cluster:${{ steps.set-context.outputs.CLUSTER }}%20namespace:${{ inputs.SERVICE_NAMESPACE }}&cols=privatedns,servicename"
+          # ACTION_AWS_URL: "https://${{ inputs.AWS_DEFAULT_REGION }}.console.aws.amazon.com/ecs/v2/clusters/${{ steps.set-context.outputs.CLUSTER }}/services"
 
     outputs:
       SHA_SHORT: ${{ steps.git-sha.outputs.SHA_SHORT }}

@@ -104,7 +104,7 @@ jobs:
       - name: Create GitHub deployment
         id: github-deployment
         uses: chrnorm/deployment-action@v2
-        if: ${{ always() && inputs.NOTIFICATIONS_JIRA == 'true' }}
+        if: always() && inputs.NOTIFICATIONS_JIRA == 'true'
         with:
           token: ${{ github.token }}
           # error, failure, in_progress, queued, pending, success, (inactive)
@@ -122,7 +122,11 @@ jobs:
 
       - name: Login JIRA
         uses: atlassian/gajira-login@master
-        if: ${{ always() && inputs.NOTIFICATIONS_JIRA == 'true' && inputs.JIRA_CODE != '' && steps.check-deploy-status.outputs.DEPLOY_STATUS == 'success' }}
+        if: |
+          always() &&
+          inputs.NOTIFICATIONS_JIRA == 'true' &&
+          inputs.JIRA_CODE != '' &&
+          steps.check-deploy-status.outputs.DEPLOY_STATUS == 'success'
         env:
           JIRA_BASE_URL: https://sonergia.atlassian.net
           JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
@@ -130,7 +134,11 @@ jobs:
 
       - name: Comment on JIRA issue
         uses: atlassian/gajira-comment@23b9748b2d2ea1c486bd788daed8b4c00fccf362
-        if: ${{ always() && inputs.NOTIFICATIONS_JIRA == 'true' && inputs.JIRA_CODE != '' && steps.check-deploy-status.outputs.DEPLOY_STATUS == 'success' }}
+        if: |
+          always() &&
+          inputs.NOTIFICATIONS_JIRA == 'true' &&
+          inputs.JIRA_CODE != '' &&
+          steps.check-deploy-status.outputs.DEPLOY_STATUS == 'success'
         with:
           issue: ${{ inputs.JIRA_CODE }}
           comment: |
@@ -140,7 +148,7 @@ jobs:
 
       - name: Deploy status style
         id: deploy-status-style
-        if: ${{ always() && inputs.NOTIFICATIONS_TEAMS == 'true' }}
+        if: always() && inputs.NOTIFICATIONS_TEAMS == 'true'
         run: |
           DEPLOY_STATUS=${{ steps.check-deploy-status.outputs.DEPLOY_STATUS }}
           DEPLOY_COLOR=
@@ -159,61 +167,32 @@ jobs:
           echo "DEPLOY_STATUS=${DEPLOY_STATUS}" >> ${GITHUB_OUTPUT}
           echo "DEPLOY_COLOR=${DEPLOY_COLOR}" >> ${GITHUB_OUTPUT}
 
-      # Checkout reusable workflow to get bash scripts
-      - uses: actions/checkout@v3
-        with:
-          repository: Sonergia/github-reusable-workflows
-          ref: '2.x'
-          # ref: 'delivery' # Only when testing ############## /!\ ##############
-
-      - name: Teams notification content
-        id: teams-notification-content
-        if: ${{ always() && inputs.NOTIFICATIONS_TEAMS == 'true' }}
-        run: |
-          CUSTOM_FACT_JIRA=""
-          if [ ! -z "${{ inputs.JIRA_CODE }}" ]; then
-            CUSTOM_FACT_JIRA="[${{ inputs.JIRA_CODE }}](https://sonergia.atlassian.net/browse/${{ inputs.JIRA_CODE }})"
-          fi
-          echo "CUSTOM_FACT_JIRA=${CUSTOM_FACT_JIRA}" >> ${GITHUB_OUTPUT}
+      # # Checkout reusable workflow to get bash scripts
+      # - uses: actions/checkout@v3
+      #   with:
+      #     repository: Sonergia/github-reusable-workflows
+      #     ref: '2.x'
+      #     # ref: 'delivery' # Only when testing ############## /!\ ##############
 
       # Notify at the end of workflow
-      # You can use markdown: https://support.microsoft.com/en-us/office/use-markdown-formatting-in-teams-4d10bd65-55e2-4b2d-a1f3-2bebdcd2c772
       - name: Notify teams channel
-        uses: Sonergia/ms-teams-notification@add-potential-action
-        if: ${{ always() && inputs.NOTIFICATIONS_TEAMS == 'true' }}
+        if: always() && inputs.NOTIFICATIONS_TEAMS == 'true'
+        uses: sonergia/github-reusable-workflows/.github/actions/ms-teams-notification@2.x
         with:
-          github-token: ${{ github.token }}
-          ms-teams-webhook-uri: ${{ secrets.MS_TEAMS_WEBHOOK_URI }}
-          notification-summary: Déploiement terminé !
-          notification-color: ${{ steps.deploy-status-style.outputs.DEPLOY_COLOR }}
-          timezone: Europe/Paris
-          # view-commit-changes: true
-          # view-workflow-run: true
-          # view-pull-request: false
-          custom-facts: |
-            - name: Status
-              value: ${{ steps.deploy-status-style.outputs.DEPLOY_STATUS }}
-            - name: Cluster
-              value: ${{ steps.string.outputs.uppercase }}
-            - name: Service
-              value: ${{ matrix.service }}
-            - name: 📖 Commit
-              value: "[${{ steps.git-commit.outputs.COMMIT_MESSAGE }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})"
-            - name: 📕 Branche
-              value: "[${{ github.ref_name }}](${{ github.server_url }}/${{ github.repository }}/tree/${{ github.ref }})"
-            - name: 🔧 CI/CD
-              value: "[Run #${{ github.run_attempt }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
-            - name: 📋 Jira
-              value: "${{ steps.teams-notification-content.outputs.CUSTOM_FACT_JIRA }}"
-          custom-actions: | # Max 5 actions
-            - text: 🔗 privé
-              url: "http://${{ matrix.service }}.${{ inputs.CLUSTER }}.ecs"
-            - text: 🔗 public
-              url: "https://${{ matrix.service }}.${{ inputs.CLUSTER }}.sonergia.org"
-            - text: 🐕 Datadog
-              url: "https://app.datadoghq.eu/logs?query=service:cloudwatch%20cluster:${{ inputs.CLUSTER }}%20%40service:${{ matrix.service }}"
-            - text: 📬 Mail
-              url: "http://mail.${{ inputs.CLUSTER }}.ecs:1080"
+          MS_TEAMS_WEBHOOK_URI: ${{ secrets.MS_TEAMS_WEBHOOK_URI }}
+          ENVIRONMENT: ${{ inputs.CLUSTER }}
+          SUMMARY: Déploiement terminé !
+          COLOR: ${{ steps.deploy-status-style.outputs.DEPLOY_COLOR }}
+          COMMIT_MESSAGE: ${{ steps.git-commit.outputs.COMMIT_MESSAGE }}
+          JIRA_CODE: ${{ inputs.JIRA_CODE }}
+          FACT_STATUS: ${{ steps.deploy-status-style.outputs.DEPLOY_STATUS }}
+          FACT_TYPE_NAME: Service
+          FACT_TYPE_VALUE: ${{ matrix.service }}
+          ACTION_PRIVATE_URL: "http://${{ matrix.service }}.${{ inputs.CLUSTER }}.ecs"
+          ACTION_PUBLIC_URL: "https://${{ matrix.service }}.${{ inputs.CLUSTER }}.sonergia.org"
+          ACTION_DATADOG_URL: "https://app.datadoghq.eu/logs?query=service:cloudwatch%20cluster:${{ inputs.CLUSTER }}%20%40service:${{ matrix.service }}"
+          ACTION_MAIL_URL: "http://mail.${{ inputs.CLUSTER }}.ecs:1080"
+          ACTION_AWS_URL: "https://${{ inputs.AWS_DEFAULT_REGION }}.console.aws.amazon.com/ecs/v2/clusters/${{ inputs.CLUSTER }}/services/${{ matrix.service }}/health"
 
       - name: Exit if deploy failed
         if: always()

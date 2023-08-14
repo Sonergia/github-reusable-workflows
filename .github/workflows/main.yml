@@ -102,7 +102,7 @@ jobs:
   #     - check-context
   #   # The "uses" statement that calls the reusable workflow can’t evaluate expressions yet. That means the repo name, branch, etc. must be hardcoded.
   #   uses: ${{ inputs.APPLICATION_BUILD_FILE_PATH }}
-  #   if: ${{ inputs.APPLICATION_BUILD_FILE_PATH != '' && inputs.IMAGE_EXISTS == 'false' }}
+  #   if: inputs.APPLICATION_BUILD_FILE_PATH != '' && inputs.IMAGE_EXISTS == 'false'
 
 #--------------------------------------------------------
 
@@ -122,7 +122,7 @@ jobs:
     needs:
       - deploy-common
     uses: ./.github/workflows/build-docker.yml
-    if: ${{ inputs.IMAGE_EXISTS == 'false' }}
+    if: inputs.IMAGE_EXISTS == 'false'
     with:
       AWS_DEFAULT_REGION: ${{ inputs.AWS_DEFAULT_REGION }}
       SERVICE_NAMESPACE: ${{ inputs.SERVICE_NAMESPACE }}

@@ -187,17 +187,10 @@ jobs:
           GITHUB_ENVIRONMENT=${{ inputs.ENVIRONMENT }}
           echo "GITHUB_ENVIRONMENT=${GITHUB_ENVIRONMENT}" >> ${GITHUB_OUTPUT}
 
-      - name: Change string case function
-        id: string
-        uses: ASzc/change-string-case-action@v5
-        if: always()
-        with:
-          string: ${{ inputs.ENVIRONMENT }}
-
       - name: Create GitHub deployment
         id: github-deployment
         uses: chrnorm/deployment-action@v2
-        if: ${{ always() && inputs.NOTIFICATIONS_JIRA == 'true' }}
+        if: always() && inputs.NOTIFICATIONS_JIRA == 'true'
         with:
           token: ${{ github.token }}
           # error, failure, in_progress, queued, pending, success, (inactive)
@@ -215,7 +208,7 @@ jobs:
 
       - name: Deploy status style
         id: deploy-status-style
-        if: ${{ always() && inputs.NOTIFICATIONS_TEAMS == 'true' }}
+        if: always() && inputs.NOTIFICATIONS_TEAMS == 'true'
         run: |
           DEPLOY_STATUS=${{ steps.check-deploy-status.outputs.DEPLOY_STATUS }}
           DEPLOY_COLOR=
@@ -234,9 +227,20 @@ jobs:
           echo "DEPLOY_STATUS=${DEPLOY_STATUS}" >> ${GITHUB_OUTPUT}
           echo "DEPLOY_COLOR=${DEPLOY_COLOR}" >> ${GITHUB_OUTPUT}
 
+      - name: Change string case function
+        id: string
+        uses: ASzc/change-string-case-action@v5
+        if: always()
+        with:
+          string: ${{ inputs.ENVIRONMENT }}
+
       - name: Login JIRA
         uses: atlassian/gajira-login@master
-        if: ${{ always() && inputs.NOTIFICATIONS_JIRA == 'true' && inputs.JIRA_CODE != '' && steps.check-deploy-status.outputs.DEPLOY_STATUS == 'success' }}
+        if: |
+          always() &&
+          inputs.NOTIFICATIONS_JIRA == 'true' &&
+          inputs.JIRA_CODE != '' &&
+          steps.check-deploy-status.outputs.DEPLOY_STATUS == 'success'
         env:
           JIRA_BASE_URL: https://sonergia.atlassian.net
           JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
@@ -244,59 +248,32 @@ jobs:
 
       - name: Comment on JIRA issue
         uses: atlassian/gajira-comment@23b9748b2d2ea1c486bd788daed8b4c00fccf362
-        if: ${{ always() && inputs.NOTIFICATIONS_JIRA == 'true' && inputs.JIRA_CODE != '' && steps.check-deploy-status.outputs.DEPLOY_STATUS == 'success' }}
+        if: |
+          always() &&
+          inputs.NOTIFICATIONS_JIRA == 'true' &&
+          inputs.JIRA_CODE != '' &&
+          steps.check-deploy-status.outputs.DEPLOY_STATUS == 'success'
         with:
           issue: ${{ inputs.JIRA_CODE }}
           comment: |
             Ticket déployé sur l'environnement ${{ steps.string.outputs.uppercase }}:
               - [🔗 AWS Lambda](https://${{ inputs.AWS_DEFAULT_REGION }}.console.aws.amazon.com/lambda/home?region=${{ inputs.AWS_DEFAULT_REGION }}#/functions/${{ matrix.lambda }}-${{ inputs.ENVIRONMENT }}?tab=code)
 
-      - name: Teams notification content
-        id: teams-notification-content
-        if: ${{ always() && inputs.NOTIFICATIONS_TEAMS == 'true' }}
-        run: |
-          if [ ! -z "${{ inputs.JIRA_CODE }}" ]; then
-            CUSTOM_FACT_JIRA_RELEASE_NAME=Jira
-            CUSTOM_FACT_JIRA_RELEASE="[${{ inputs.JIRA_CODE }}](https://sonergia.atlassian.net/browse/${{ inputs.JIRA_CODE }})"
-          else
-            CUSTOM_FACT_JIRA_RELEASE_NAME=Release
-            CUSTOM_FACT_JIRA_RELEASE="[${{ github.ref_name }}](${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }})"
-          fi
-          echo "CUSTOM_FACT_JIRA_RELEASE_NAME=${CUSTOM_FACT_JIRA_RELEASE_NAME}" >> ${GITHUB_OUTPUT}
-          echo "CUSTOM_FACT_JIRA_RELEASE=${CUSTOM_FACT_JIRA_RELEASE}" >> ${GITHUB_OUTPUT}
-
       # Notify at the end of workflow
-      # You can use markdown: https://support.microsoft.com/en-us/office/use-markdown-formatting-in-teams-4d10bd65-55e2-4b2d-a1f3-2bebdcd2c772
       - name: Notify teams channel
-        uses: Sonergia/ms-teams-notification@add-potential-action
-        if: ${{ always() && inputs.NOTIFICATIONS_TEAMS == 'true' }}
+        if: always() && inputs.NOTIFICATIONS_TEAMS == 'true'
+        uses: sonergia/github-reusable-workflows/.github/actions/ms-teams-notification@2.x
         with:
-          github-token: ${{ github.token }}
-          ms-teams-webhook-uri: ${{ secrets.MS_TEAMS_WEBHOOK_URI }}
-          notification-summary: Déploiement lambda ${{ matrix.lambda }} -> ${{ inputs.ENVIRONMENT }} terminé !
-          notification-color: ${{ steps.deploy-status-style.outputs.DEPLOY_COLOR }}
-          timezone: Europe/Paris
-          # view-commit-changes: true
-          # view-workflow-run: true
-          # view-pull-request: false
-          custom-facts: |
-            - name: Status
-              value: ${{ steps.deploy-status-style.outputs.DEPLOY_STATUS }}
-            - name: Environnement
-              value: ${{ steps.string.outputs.uppercase }}
-            - name: Lambda
-              value: ${{ matrix.lambda }}
-            - name: 📖 Commit
-              value: "[${{ steps.git-commit.outputs.COMMIT_MESSAGE }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})"
-            - name: 📕 Branche
-              value: "[${{ github.ref_name }}](${{ github.server_url }}/${{ github.repository }}/tree/${{ github.ref }})"
-            - name: 🔧 CI/CD
-              value: "[Run #${{ github.run_attempt }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
-            - name: 📋 ${{ steps.teams-notification-content.outputs.CUSTOM_FACT_JIRA_RELEASE_NAME }}
-              value: "${{ steps.teams-notification-content.outputs.CUSTOM_FACT_JIRA_RELEASE }}"
-          custom-actions: | # Max 5 actions
-            - text: 🔗 AWS Lambda
-              url: "https://${{ inputs.AWS_DEFAULT_REGION }}.console.aws.amazon.com/lambda/home?region=${{ inputs.AWS_DEFAULT_REGION }}#/functions/${{ matrix.lambda }}-${{ inputs.ENVIRONMENT }}?tab=code"
+          MS_TEAMS_WEBHOOK_URI: ${{ secrets.MS_TEAMS_WEBHOOK_URI }}
+          ENVIRONMENT: ${{ inputs.ENVIRONMENT }}
+          SUMMARY: Déploiement lambda ${{ matrix.lambda }} -> ${{ inputs.ENVIRONMENT }} terminé !
+          COLOR: ${{ steps.deploy-status-style.outputs.DEPLOY_COLOR }}
+          COMMIT_MESSAGE: ${{ steps.git-commit.outputs.COMMIT_MESSAGE }}
+          JIRA_CODE: ${{ inputs.JIRA_CODE }}
+          FACT_STATUS: ${{ steps.deploy-status-style.outputs.DEPLOY_STATUS }}
+          FACT_TYPE_NAME: Lambda
+          FACT_TYPE_VALUE: ${{ matrix.lambda }}
+          ACTION_AWS_URL: "https://${{ inputs.AWS_DEFAULT_REGION }}.console.aws.amazon.com/lambda/home?region=${{ inputs.AWS_DEFAULT_REGION }}#/functions/${{ matrix.lambda }}-${{ inputs.ENVIRONMENT }}?tab=code"
 
       - name: Exit if deploy failed
         if: always()
