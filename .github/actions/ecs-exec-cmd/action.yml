@@ -58,7 +58,7 @@ runs:
         # ref: 'delivery' # Only when testing ############## /!\ ##############
 
     - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v2
+      uses: aws-actions/configure-aws-credentials@v3
       with:
         aws-access-key-id: ${{ inputs.AWS_ACCESS_KEY_ID_TF }}
         aws-secret-access-key: ${{ inputs.AWS_SECRET_ACCESS_KEY_TF }}
