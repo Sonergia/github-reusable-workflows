@@ -52,12 +52,12 @@ TASK_ARN=($(aws ecs list-tasks --cluster ${CLUSTER} --service-name ${SERVICE} \
 
 echo "::debug title=ecs-exec-cmd::Task ARN ${TASK_ARN} found"
 
-TASK_ID=$(echo ${TASK_ARN} | awk -F / '{ print $3 }')
-
 if [ -z ${TASK_ARN} ]; then
     echo "::error title=ecs-exec-cmd::There are no running tasks for service ${SERVICE} on cluster ${CLUSTER}!"
     exit 1
 fi
+
+TASK_ID=$(echo ${TASK_ARN} | awk -F / '{ print $3 }')
 
 echo "::debug title=ecs-exec-cmd::Task ID ${TASK_ID} found"
 
@@ -70,7 +70,7 @@ if [[ ! " ${CONTAINERS_LIST[*]} " =~ " ${CONTAINER} " ]]; then
 fi
 
 echo "::debug title=ecs-exec-cmd::Container ${CONTAINER} found"
-echo "::debug title=ecs-exec-cmd::Trying to connect to container ${CONTAINER}"
+echo "::notice title=ecs-exec-cmd::Trying to connect to container ${CONTAINER} on cluster ${CLUSTER}"
 
 # Issues with SSM agent
 # https://github.com/aws/amazon-ssm-agent/issues/361
@@ -81,9 +81,9 @@ echo "::debug title=ecs-exec-cmd::Trying to connect to container ${CONTAINER}"
 # Append "echo execute-command-success" to command to know if it fails (hacki workaround)
 # See: https://github.com/aws/amazon-ecs-agent/issues/2846
 OUTPUT=$(unbuffer aws ecs execute-command \
-    --cluster "test" \
-    --task "arn:aws:ecs:eu-west-3:154799875144:task/test/45288842d4354bfc9cb1cec8b26cedb9" \
-    --container superset \
+    --cluster ${CLUSTER} \
+    --task ${TASK_ID} \
+    --container ${CONTAINER} \
     --interactive \
     --command "/bin/sh -c '${COMMAND} && echo execute-command-success'")
 

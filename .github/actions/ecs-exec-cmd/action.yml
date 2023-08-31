@@ -43,12 +43,13 @@ runs:
     #     sudo dpkg -i session-manager-plugin.deb
     #     rm -f session-manager-plugin.deb
 
-    - name: Install unbuffer
-      shell: bash
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          expect
+    # Unbuffer is preinstalled in runner
+    # - name: Install unbuffer
+    #   shell: bash
+    #   run: |
+    #     sudo apt-get update
+    #     sudo apt-get install -y \
+    #       expect
 
     # Checkout reusable workflow to get bash scripts
     - uses: actions/checkout@v3
