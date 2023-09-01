@@ -15,6 +15,11 @@ if [[ ! $(which aws) ]]; then
     exit 1
 fi
 
+if [[ ! $(which session-manager-plugin) ]]; then
+    echo "::error title=ecs-exec-cmd::AWS session-manager-plugin is not installed!"
+    exit 1
+fi
+
 if [[ ! $(which jq) ]]; then
     echo "::error title=ecs-exec-cmd::jq package is not installed!"
     exit 1
