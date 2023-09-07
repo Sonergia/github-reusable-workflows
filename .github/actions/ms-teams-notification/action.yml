@@ -82,26 +82,17 @@ runs:
       id: common-custom-facts
       shell: bash
       run: |
-        CUSTOM_FACTS=$(cat <<EOF
-          [
-            {
-              "name": "Status",
-              "value": "${{ inputs.FACT_STATUS }}"
-            },
-            {
-              "name": "Env/Cluster",
-              "value": "${{ steps.uppercase.outputs.ENVIRONMENT }}"
-            },
-            {
-              "name": "${{ inputs.FACT_TYPE_NAME }}",
-              "value": "${{ inputs.FACT_TYPE_VALUE }}"
-            }
-          ]
-        EOF
-        )
+        # Using arg helps for escaping special chars like quotes
+        CUSTOM_FACTS=$(jq -n \
+          --arg fs "${{ inputs.FACT_STATUS }}" \
+          --arg env "${{ steps.uppercase.outputs.ENVIRONMENT }}" \
+          --arg ftn "${{ inputs.FACT_TYPE_NAME }}" \
+          --arg ftv "${{ inputs.FACT_TYPE_VALUE }}" \
+          '[{"name":"Status","value":$fs},{"name":"Env/Cluster","value":$env},{"name":$ftn,"value":$ftv}]')
 
         # Minify JSON (one line)
         CUSTOM_FACTS=$(echo "${CUSTOM_FACTS}" | jq -c)
+        echo "::debug title=MS Teams notification::CUSTOM_FACTS output value is '${CUSTOM_FACTS}'"
         echo "CUSTOM_FACTS=${CUSTOM_FACTS}" >> ${GITHUB_OUTPUT}
 
     # You can use markdown: https://support.microsoft.com/en-us/office/use-markdown-formatting-in-teams-4d10bd65-55e2-4b2d-a1f3-2bebdcd2c772
@@ -109,21 +100,24 @@ runs:
       id: build-custom-facts
       shell: bash
       run: |
-        CUSTOM_FACTS='${{ steps.common-custom-facts.outputs.CUSTOM_FACTS }}'
+        CUSTOM_FACTS=$(cat <<EOF
+          ${{ steps.common-custom-facts.outputs.CUSTOM_FACTS }}
+        EOF
+        )
 
         # Commit
         if [ ! -z "${{ inputs.COMMIT_MESSAGE }}" ]; then
           FACT_COMMIT_LINK="[${{ inputs.COMMIT_MESSAGE }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})"
-          CUSTOM_FACTS=$(echo "${CUSTOM_FACTS}" | jq '. += [{"name": "📖 Commit","value": "'"${FACT_COMMIT_LINK}"'"}]')
+          CUSTOM_FACTS=$(echo "${CUSTOM_FACTS}" | jq '. += [{"name":"📖 Commit","value":"'"${FACT_COMMIT_LINK}"'"}]')
         fi
 
         # Branch
         FACT_BRANCH_LINK="[${{ github.ref_name }}](${{ github.server_url }}/${{ github.repository }}/tree/${{ github.ref }})"
-        CUSTOM_FACTS=$(echo "${CUSTOM_FACTS}" | jq '. += [{"name": "📕 Branche","value": "'"${FACT_BRANCH_LINK}"'"}]')
+        CUSTOM_FACTS=$(echo "${CUSTOM_FACTS}" | jq '. += [{"name":"📕 Branche","value":"'"${FACT_BRANCH_LINK}"'"}]')
 
         # CICD Workflow
         FACT_WORKFLOW_LINK="[Run #${{ github.run_attempt }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
-        CUSTOM_FACTS=$(echo "${CUSTOM_FACTS}" | jq '. += [{"name": "🔧 CI/CD","value": "'"${FACT_WORKFLOW_LINK}"'"}]')
+        CUSTOM_FACTS=$(echo "${CUSTOM_FACTS}" | jq '. += [{"name":"🔧 CI/CD","value":"'"${FACT_WORKFLOW_LINK}"'"}]')
 
         # Release / Jira issue
         FACT_RELEASE_NAME=
@@ -137,11 +131,12 @@ runs:
         fi
 
         if [ ! -z ${FACT_RELEASE_NAME} ]; then
-          CUSTOM_FACTS=$(echo "${CUSTOM_FACTS}" | jq '. += [{"name": "'"${FACT_RELEASE_NAME}"'","value": "'"${FACT_RELEASE_LINK}"'"}]')
+          CUSTOM_FACTS=$(echo "${CUSTOM_FACTS}" | jq '. += [{"name":"'"${FACT_RELEASE_NAME}"'","value":"'"${FACT_RELEASE_LINK}"'"}]')
         fi
 
         # Minify JSON (one line)
         CUSTOM_FACTS=$(echo "${CUSTOM_FACTS}" | jq -c)
+        echo "::debug title=MS Teams notification::CUSTOM_FACTS output value is '${CUSTOM_FACTS}'"
         echo "CUSTOM_FACTS=${CUSTOM_FACTS}" >> ${GITHUB_OUTPUT}
 
     - name: Build custom actions
@@ -149,35 +144,36 @@ runs:
       shell: bash
       run: |
         # Max 5 actions
-        CUSTOM_ACTIONS="[]"
+        CUSTOM_ACTIONS=[]
 
         # Private url
         if [ ! -z "${{ inputs.ACTION_PRIVATE_URL }}" ]; then
-          CUSTOM_ACTIONS=$(echo "${CUSTOM_ACTIONS}" | jq '. += [{"text": "🔗 privé","url": "${{ inputs.ACTION_PRIVATE_URL }}"}]')
+          CUSTOM_ACTIONS=$(echo "${CUSTOM_ACTIONS}" | jq '. += [{"text":"🔗 privé","url":"${{ inputs.ACTION_PRIVATE_URL }}"}]')
         fi
 
         # Public url
         if [ ! -z "${{ inputs.ACTION_PUBLIC_URL }}" ]; then
-          CUSTOM_ACTIONS=$(echo "${CUSTOM_ACTIONS}" | jq '. += [{"text": "🔗 public","url": "${{ inputs.ACTION_PUBLIC_URL }}"}]')
+          CUSTOM_ACTIONS=$(echo "${CUSTOM_ACTIONS}" | jq '. += [{"text":"🔗 public","url":"${{ inputs.ACTION_PUBLIC_URL }}"}]')
         fi
 
         # Datadog
         if [ ! -z "${{ inputs.ACTION_DATADOG_URL }}" ]; then
-          CUSTOM_ACTIONS=$(echo "${CUSTOM_ACTIONS}" | jq '. += [{"text": "🐕 Datadog","url": "${{ inputs.ACTION_DATADOG_URL }}"}]')
+          CUSTOM_ACTIONS=$(echo "${CUSTOM_ACTIONS}" | jq '. += [{"text":"🐕 Datadog","url":"${{ inputs.ACTION_DATADOG_URL }}"}]')
         fi
 
         # Mail
         if [ ! -z "${{ inputs.ACTION_MAIL_URL }}" ]; then
-          CUSTOM_ACTIONS=$(echo "${CUSTOM_ACTIONS}" | jq '. += [{"text": "📬 Mail","url": "${{ inputs.ACTION_MAIL_URL }}"}]')
+          CUSTOM_ACTIONS=$(echo "${CUSTOM_ACTIONS}" | jq '. += [{"text":"📬 Mail","url":"${{ inputs.ACTION_MAIL_URL }}"}]')
         fi
 
         # AWS console link
         if [ ! -z "${{ inputs.ACTION_AWS_URL }}" ]; then
-          CUSTOM_ACTIONS=$(echo "${CUSTOM_ACTIONS}" | jq '. += [{"text": "☁️ AWS console","url": "${{ inputs.ACTION_AWS_URL }}"}]')
+          CUSTOM_ACTIONS=$(echo "${CUSTOM_ACTIONS}" | jq '. += [{"text":"☁️ AWS console","url":"${{ inputs.ACTION_AWS_URL }}"}]')
         fi
 
         # Minify JSON (one line)
         CUSTOM_ACTIONS=$(echo "${CUSTOM_ACTIONS}" | jq -c)
+        echo "::debug title=MS Teams notification::CUSTOM_ACTIONS output value is '${CUSTOM_ACTIONS}'"
         echo "CUSTOM_ACTIONS=${CUSTOM_ACTIONS}" >> ${GITHUB_OUTPUT}
 
     - name: Notify teams channel
