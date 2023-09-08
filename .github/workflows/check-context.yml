@@ -150,7 +150,7 @@ jobs:
           FACT_TYPE_NAME: Service(s)
           FACT_TYPE_VALUE: ${{ join(fromJson(inputs.SERVICES), ',') }}
           ACTION_DATADOG_URL: "https://app.datadoghq.eu/logs?query=cluster:${{ steps.set-context.outputs.CLUSTER }}%20namespace:${{ inputs.SERVICE_NAMESPACE }}&cols=privatedns,servicename"
-          # ACTION_AWS_URL: "https://${{ inputs.AWS_DEFAULT_REGION }}.console.aws.amazon.com/ecs/v2/clusters/${{ steps.set-context.outputs.CLUSTER }}/services"
+          # ACTION_AWS_URL: "https://${{ inputs.AWS_DEFAULT_REGION }}.console.aws.amazon.com/ecs/v2/clusters/${{ inputs.CLUSTER }}/services?region=${{ inputs.AWS_DEFAULT_REGION }}"
 
     outputs:
       SHA_SHORT: ${{ steps.git-sha.outputs.SHA_SHORT }}

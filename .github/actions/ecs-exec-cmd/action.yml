@@ -33,6 +33,7 @@ inputs:
 runs:
   using: "composite"
   steps:
+    # To Remove when agent will be up-to-date everywhere
     - name: Install AWS session manager plugin
       id: session-manager-plugin
       shell: bash

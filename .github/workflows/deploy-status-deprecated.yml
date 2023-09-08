@@ -133,7 +133,7 @@ jobs:
           JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
 
       - name: Comment on JIRA issue
-        uses: atlassian/gajira-comment@23b9748b2d2ea1c486bd788daed8b4c00fccf362
+        uses: atlassian/gajira-comment@v3
         if: |
           always() &&
           inputs.NOTIFICATIONS_JIRA == 'true' &&
@@ -142,7 +142,7 @@ jobs:
         with:
           issue: ${{ inputs.JIRA_CODE }}
           comment: |
-            Ticket déployé sur le cluster ${{ steps.string.outputs.uppercase }} (cf Releases):
+            Ticket déployé sur l'environnement ${{ steps.string.outputs.uppercase }} (cf Releases):
               - Url du service: http://${{ matrix.service }}.${{ inputs.CLUSTER }}.ecs
               - Logs du service: https://app.datadoghq.eu/logs?query=service:cloudwatch%20cluster:${{ inputs.CLUSTER }}%20%40service:${{ matrix.service }}
 

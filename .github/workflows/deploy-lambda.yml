@@ -163,7 +163,7 @@ jobs:
 
           terraform apply \
             -auto-approve \
-            -var-file terraform-${{ inputs.ENVIRONMENT }}.tfvars
+            -var-file=terraform-${{ inputs.ENVIRONMENT }}.tfvars
 
       #--------------------------------------------------------
 
@@ -246,8 +246,65 @@ jobs:
           JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
           JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
 
+      # - name: Format JIRA comment with ADF
+      #   id: format-jira-comment
+      #   if: |
+      #     always() &&
+      #     inputs.NOTIFICATIONS_JIRA == 'true' &&
+      #     inputs.JIRA_CODE != '' &&
+      #     steps.check-deploy-status.outputs.DEPLOY_STATUS == 'success'
+      #   run: |
+      #     JIRA_COMMENT=$(cat <<EOF
+      #       {
+      #         "version": 1,
+      #         "type": "doc",
+      #         "content": [
+      #           {
+      #             "type": "paragraph",
+      #             "content": [
+      #               {
+      #                 "type": "text",
+      #                 "text": "Ticket déployé sur l'environnement ${{ steps.string.outputs.uppercase }}:"
+      #               }
+      #             ]
+      #           },
+      #           {
+      #             "type": "bulletList",
+      #             "content": [
+      #               {
+      #                 "type": "listItem",
+      #                 "content": [
+      #                   {
+      #                     "type": "paragraph",
+      #                     "content": [
+      #                       {
+      #                         "type": "text",
+      #                         "text": "🔗 AWS Lambda",
+      #                         "marks": [
+      #                           {
+      #                             "type": "link",
+      #                             "attrs": {
+      #                               "href": "https://${{ inputs.AWS_DEFAULT_REGION }}.console.aws.amazon.com/lambda/home?region=${{ inputs.AWS_DEFAULT_REGION }}#/functions/${{ matrix.lambda }}-${{ inputs.ENVIRONMENT }}?tab=code"
+      #                             }
+      #                           }
+      #                         ]
+      #                       }
+      #                     ]
+      #                   }
+      #                 ]
+      #               }
+      #             ]
+      #           }
+      #         ]
+      #       }
+      #     EOF
+      #     )
+      #     # Minify JSON (one line)
+      #     JIRA_COMMENT=$(echo "${JIRA_COMMENT}" | jq -c)
+      #     echo "JIRA_COMMENT=${JIRA_COMMENT}" >> ${GITHUB_OUTPUT}
+
       - name: Comment on JIRA issue
-        uses: atlassian/gajira-comment@23b9748b2d2ea1c486bd788daed8b4c00fccf362
+        uses: atlassian/gajira-comment@v3
         if: |
           always() &&
           inputs.NOTIFICATIONS_JIRA == 'true' &&
@@ -257,7 +314,7 @@ jobs:
           issue: ${{ inputs.JIRA_CODE }}
           comment: |
             Ticket déployé sur l'environnement ${{ steps.string.outputs.uppercase }}:
-              - [🔗 AWS Lambda](https://${{ inputs.AWS_DEFAULT_REGION }}.console.aws.amazon.com/lambda/home?region=${{ inputs.AWS_DEFAULT_REGION }}#/functions/${{ matrix.lambda }}-${{ inputs.ENVIRONMENT }}?tab=code)
+              - ☁️ AWS Lambda: https://${{ inputs.AWS_DEFAULT_REGION }}.console.aws.amazon.com/lambda/home?region=${{ inputs.AWS_DEFAULT_REGION }}#/functions/${{ matrix.lambda }}-${{ inputs.ENVIRONMENT }}?tab=code
 
       # Notify at the end of workflow
       - name: Notify teams channel

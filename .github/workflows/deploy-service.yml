@@ -37,7 +37,7 @@ on:
       DNS_PREFIX:
         required: false
         type: string
-        default: null
+        default: ''
       JIRA_CODE:
         required: false
         type: string
@@ -225,15 +225,15 @@ jobs:
 
           echo "::debug title=Deploy service::Docker image tag is ${DOCKER_IMAGE_TAG}"
 
-          EXTRA_PARAMS=
-
+          FORCE_DEPLOYMENT=
           if [ "${{ inputs.FORCE_DEPLOYMENT }}" == "true" ]; then
-            EXTRA_PARAMS="${EXTRA_PARAMS} -replace=module.${{ matrix.service }}-service.aws_ecs_task_definition.task"
+            FORCE_DEPLOYMENT="-replace=module.${{ matrix.service }}-service.aws_ecs_task_definition.task"
             echo "::debug title=Deploy service::Force deployment has been set"
           fi
 
-          if [ ! -z "${{ env.DNS_PREFIX }}" ]; then
-            EXTRA_PARAMS="${EXTRA_PARAMS} -var "dns_prefix=${{ env.DNS_PREFIX }}""
+          WITH_DNS_PREFIX=
+          if [ ! -z "${{ inputs.DNS_PREFIX }}" ]; then
+            WITH_DNS_PREFIX="-var=\"dns_prefix=${{ inputs.DNS_PREFIX }}\""
             echo "::debug title=Deploy service::A dns prefix has been set"
           fi
 
@@ -244,10 +244,41 @@ jobs:
 
           terraform apply \
             -auto-approve \
-            -var-file terraform-${{ inputs.CLUSTER }}.tfvars \
-            -var "image_tag=${DOCKER_IMAGE_TAG}" \
-            -var "use_bastion_ssh_tunnel=false" \
-            ${EXTRA_PARAMS}
+            -var-file=terraform-${{ inputs.CLUSTER }}.tfvars \
+            -var="image_tag=${DOCKER_IMAGE_TAG}" \
+            -var="use_bastion_ssh_tunnel=false" \
+            ${FORCE_DEPLOYMENT} ${WITH_DNS_PREFIX}
+
+      - name: Terraform output
+        id: tf-output
+        if: always()
+        working-directory: ./.terraform/services
+        run: |
+          cd ${{ matrix.service }}
+
+          # Handle outputs
+          TF_OUTPUTS=$(terraform output -json | jq -c)
+          TRAFFIC_PORT=$(echo "${TF_OUTPUTS}" | jq --raw-output '.traffic_port.value')
+          PRIVATE_URL=$(echo "${TF_OUTPUTS}" | jq --raw-output '.private_url.value')
+          PUBLIC_URL=$(echo "${TF_OUTPUTS}" | jq --raw-output '.public_url.value')
+
+          # Check case when outputs are not implemented (PRIVATE_URL output should always be set)
+          # JQ return null if json key is not found
+          if [ "${PRIVATE_URL}" == "null" ]; then
+            # PUBLIC_URL resource might not exist but we set it anyway
+            PUBLIC_URL="https://${{ matrix.service }}.${{ inputs.CLUSTER }}.sonergia.org"
+            PRIVATE_URL="http://${{ matrix.service }}.${{ inputs.CLUSTER }}.ecs"
+            TRAFFIC_PORT=80
+          fi
+
+          if [ "${TRAFFIC_PORT}" != "80" ]; then
+            PRIVATE_URL="${PRIVATE_URL}:${TRAFFIC_PORT}"
+          fi
+
+          echo "::notice title=Deploy service::PUBLIC_URL output value is '${PUBLIC_URL}'"
+          echo "::notice title=Deploy service::PRIVATE_URL output value is '${PRIVATE_URL}'"
+          echo "PRIVATE_URL=${PRIVATE_URL}" >> ${GITHUB_OUTPUT}
+          echo "PUBLIC_URL=${PUBLIC_URL}" >> ${GITHUB_OUTPUT}
 
       #--------------------------------------------------------
 
@@ -300,8 +331,9 @@ jobs:
           task: deploy-${{ inputs.CLUSTER }}-${{ inputs.IMAGE_SHA }}
           # Use log-url since JIRA does not display environment-url
           # environment-url: http://${{ matrix.service }}.${{ inputs.CLUSTER }}.ecs
-          log-url: http://${{ matrix.service }}.${{ inputs.CLUSTER }}.ecs
           # log-url: https://app.datadoghq.eu/logs?query=service:cloudwatch%20cluster:${{ inputs.CLUSTER }}%20%40service:${{ matrix.service }}
+          # log-url: http://${{ matrix.service }}.${{ inputs.CLUSTER }}.ecs
+          log-url: ${{ steps.tf-output.outputs.PRIVATE_URL }}
           environment: ${{ steps.map-github-env.outputs.GITHUB_ENVIRONMENT }}
           # Specifies if the given environment is specific to the deployment and will no longer exist at some point in the future.
           transient-environment: ${{ inputs.CLUSTER != 'prod' }}
@@ -318,7 +350,7 @@ jobs:
             DEPLOY_STATUS="✅ ${DEPLOY_STATUS}"
             DEPLOY_COLOR=2cbe4e
           elif [ "${DEPLOY_STATUS}" == "failure" ]; then
-            DEPLOY_STATUS="❗${DEPLOY_STATUS} l'app ne démarre pas correctement et n'a pas pu être livrée (rollback) !"
+            DEPLOY_STATUS="❗${DEPLOY_STATUS} ${{ matrix.service }} ne démarre pas correctement, un rollback a été tenté !"
             DEPLOY_COLOR=ffc107
           elif [ "${DEPLOY_STATUS}" == "error" ]; then
             DEPLOY_STATUS="❌ ${DEPLOY_STATUS} erreur de CICD, appelle un DevOps !"
@@ -347,8 +379,141 @@ jobs:
           JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
           JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
 
+      # # See https://github.com/atlassian/gajira-comment/issues/42
+      # - name: Format JIRA comment with ADF
+      #   id: format-jira-comment
+      #   if: |
+      #     always() &&
+      #     inputs.NOTIFICATIONS_JIRA == 'true' &&
+      #     inputs.JIRA_CODE != '' &&
+      #     steps.check-deploy-status.outputs.DEPLOY_STATUS == 'success'
+      #   run: |
+      #     JIRA_COMMENT=$(cat <<EOF
+      #       {
+      #         "version":1,
+      #         "type":"doc",
+      #         "content":[
+      #           {
+      #             "type":"paragraph",
+      #             "content":[
+      #               {
+      #                 "type":"text",
+      #                 "text":"Ticket déployé sur l'environnement ${{ steps.string.outputs.uppercase }}:"
+      #               }
+      #             ]
+      #           },
+      #           {
+      #             "type":"bulletList",
+      #             "content":[
+      #               {
+      #                 "type":"listItem",
+      #                 "content":[
+      #                   {
+      #                     "type":"paragraph",
+      #                     "content":[
+      #                       {
+      #                         "type":"text",
+      #                         "text":"🔗 public",
+      #                         "marks":[
+      #                           {
+      #                             "type":"link",
+      #                             "attrs":{
+      #                               "href":"${{ steps.tf-output.outputs.PUBLIC_URL }}"
+      #                             }
+      #                           }
+      #                         ]
+      #                       }
+      #                     ]
+      #                   }
+      #                 ]
+      #               },
+      #               {
+      #                 "type":"listItem",
+      #                 "content":[
+      #                   {
+      #                     "type":"paragraph",
+      #                     "content":[
+      #                       {
+      #                         "type":"text",
+      #                         "text":"🔗 privé",
+      #                         "marks":[
+      #                           {
+      #                             "type":"link",
+      #                             "attrs":{
+      #                               "href":"${{ steps.tf-output.outputs.PRIVATE_URL }}"
+      #                             }
+      #                           }
+      #                         ]
+      #                       },
+      #                       {
+      #                         "type":"hardBreak"
+      #                       }
+      #                     ]
+      #                   }
+      #                 ]
+      #               },
+      #               {
+      #                 "type":"listItem",
+      #                 "content":[
+      #                   {
+      #                     "type":"paragraph",
+      #                     "content":[
+      #                       {
+      #                         "type":"text",
+      #                         "text":"🐕 Datadog",
+      #                         "marks":[
+      #                           {
+      #                             "type":"link",
+      #                             "attrs":{
+      #                               "href":"https://app.datadoghq.eu/logs?query=cluster:${{ inputs.CLUSTER }}%20servicename:%22${{ inputs.SERVICE_NAMESPACE }}/${{ matrix.service }}%22&cols=privatedns,servicename"
+      #                             }
+      #                           }
+      #                         ]
+      #                       },
+      #                       {
+      #                         "type":"hardBreak"
+      #                       }
+      #                     ]
+      #                   }
+      #                 ]
+      #               },
+      #               {
+      #                 "type":"listItem",
+      #                 "content":[
+      #                   {
+      #                     "type":"paragraph",
+      #                     "content":[
+      #                       {
+      #                         "type":"text",
+      #                         "text":"📬 Mail",
+      #                         "marks":[
+      #                           {
+      #                             "type":"link",
+      #                             "attrs":{
+      #                               "href":"http://mail.${{ inputs.CLUSTER }}.ecs:1080"
+      #                             }
+      #                           }
+      #                         ]
+      #                       },
+      #                       {
+      #                         "type":"hardBreak"
+      #                       }
+      #                     ]
+      #                   }
+      #                 ]
+      #               }
+      #             ]
+      #           }
+      #         ]
+      #       }
+      #     EOF
+      #     )
+      #     # Minify JSON (one line)
+      #     JIRA_COMMENT=$(echo "${JIRA_COMMENT}" | jq -c)
+      #     echo "JIRA_COMMENT=${JIRA_COMMENT}" >> ${GITHUB_OUTPUT}
+
       - name: Comment on JIRA issue
-        uses: atlassian/gajira-comment@23b9748b2d2ea1c486bd788daed8b4c00fccf362
+        uses: atlassian/gajira-comment@v3
         if: |
           always() &&
           inputs.NOTIFICATIONS_JIRA == 'true' &&
@@ -357,11 +522,12 @@ jobs:
         with:
           issue: ${{ inputs.JIRA_CODE }}
           comment: |
-            Ticket déployé sur le cluster ${{ steps.string.outputs.uppercase }}:
-              - [🔗 public](https://${{ matrix.service }}.${{ inputs.CLUSTER }}.sonergia.org)
-              - [🔗 privé](http://${{ matrix.service }}.${{ inputs.CLUSTER }}.ecs)
-              - [🐕 Datadog](https://app.datadoghq.eu/logs?query=cluster:${{ inputs.CLUSTER }}%20servicename:%22${{ inputs.SERVICE_NAMESPACE }}/${{ matrix.service }}%22&cols=privatedns,servicename)
-              - [📬 Mail](http://mail.${{ inputs.CLUSTER }}.ecs:1080)
+            Ticket déployé sur l'environnement ${{ steps.string.outputs.uppercase }}:
+              - 🔗 public: ${{ steps.tf-output.outputs.PUBLIC_URL }}
+              - 🔗 privé: ${{ steps.tf-output.outputs.PRIVATE_URL }}
+              - 🐕 Datadog: https://app.datadoghq.eu/logs?query=cluster:${{ inputs.CLUSTER }}%20servicename:%22${{ inputs.SERVICE_NAMESPACE }}/${{ matrix.service }}%22&cols=privatedns,servicename
+              - 📬 Mail: http://mail.${{ inputs.CLUSTER }}.ecs:1080
+              - ☁️ AWS console: https://${{ inputs.AWS_DEFAULT_REGION }}.console.aws.amazon.com/ecs/v2/clusters/${{ inputs.CLUSTER }}/services/${{ matrix.service }}/health
 
       # Notify at the end of workflow
       - name: Notify teams channel
@@ -377,8 +543,8 @@ jobs:
           FACT_STATUS: ${{ steps.deploy-status-style.outputs.DEPLOY_STATUS }}
           FACT_TYPE_NAME: Service
           FACT_TYPE_VALUE: ${{ matrix.service }}
-          ACTION_PRIVATE_URL: "http://${{ matrix.service }}.${{ inputs.CLUSTER }}.ecs"
-          ACTION_PUBLIC_URL: "https://${{ matrix.service }}.${{ inputs.CLUSTER }}.sonergia.org"
+          ACTION_PRIVATE_URL: "${{ steps.tf-output.outputs.PRIVATE_URL }}"
+          ACTION_PUBLIC_URL: "${{ steps.tf-output.outputs.PUBLIC_URL }}"
           ACTION_DATADOG_URL: "https://app.datadoghq.eu/logs?query=cluster:${{ inputs.CLUSTER }}%20servicename:%22${{ inputs.SERVICE_NAMESPACE }}/${{ matrix.service }}%22&cols=privatedns,servicename"
           ACTION_MAIL_URL: "http://mail.${{ inputs.CLUSTER }}.ecs:1080"
           ACTION_AWS_URL: "https://${{ inputs.AWS_DEFAULT_REGION }}.console.aws.amazon.com/ecs/v2/clusters/${{ inputs.CLUSTER }}/services/${{ matrix.service }}/health"

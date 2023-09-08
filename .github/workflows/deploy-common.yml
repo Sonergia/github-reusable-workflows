@@ -83,7 +83,7 @@ jobs:
             cd ./common/config-cluster
             terraform init -reconfigure -upgrade -backend-config=backend-${{ inputs.CLUSTER }}.conf
             terraform validate -no-color
-            terraform apply -auto-approve -var-file terraform-${{ inputs.CLUSTER }}.tfvars
+            terraform apply -auto-approve -var-file=terraform-${{ inputs.CLUSTER }}.tfvars
           else
             echo "::warning title=Deploy common::Terraform dir './common/config-cluster' does not exists (but it might be on purpose)"
           fi
