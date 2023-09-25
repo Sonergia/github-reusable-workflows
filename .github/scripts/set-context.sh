@@ -93,9 +93,6 @@ IS_LAMBDA=${2:-"false"}
 IS_LEGACY=${3:-"false"}
 CREATE_TAG_LATEST="false"
 
-echo "::debug title=Set context::Parameters ${*}"
-echo "::notice title=Set context::GitHub context event '${GITHUB_EVENT_NAME}', ref_type '${GITHUB_REF_TYPE}', ref_name '${GITHUB_REF_NAME}'"
-
 # Parameters checks
 if [ ${IS_LAMBDA} = "false" ] && [ ${IS_LEGACY} = "true" ]; then
     echo "::error title=Set context::Not implemented case SERVICE+LEGACY"
@@ -157,8 +154,6 @@ else
     exit 1
 fi
 
-echo "::notice title=Set context::Cluster/Env output value is '${ENVIRONMENT_OUTPUT}'"
-
 # Integrity checks
 if [ -z "${ENVIRONMENT_OUTPUT}" ]; then
     echo "::error title=Set context::Could not set Cluster/Env output value with event '${GITHUB_EVENT_NAME}', ref_type '${GITHUB_REF_TYPE}', ref_name '${GITHUB_REF_NAME}'"
@@ -179,6 +174,7 @@ if [ ${IS_LAMBDA} = "false" ]; then
     fi
 
     # New ECS infra expects CLUSTER var instead of ENVIRONMENT => to fix
+    # TODO: la var CLUSTER doit disparaître au profit de ENVIRONMENT
     echo "CLUSTER=${ENVIRONMENT_OUTPUT}" >>${GITHUB_OUTPUT}
     echo "IMAGE_TAG=${IMAGE_TAG}" >>${GITHUB_OUTPUT}
     echo "CREATE_TAG_LATEST=${CREATE_TAG_LATEST}" >>${GITHUB_OUTPUT}

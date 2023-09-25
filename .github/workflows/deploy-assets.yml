@@ -1,0 +1,322 @@
+name: ☁️ Build assets & deploy to CDN
+on:
+  workflow_call:
+    inputs:
+      AWS_DEFAULT_REGION:
+        description: 'AWS region to deploy to'
+        required: true
+        type: string
+      BUILD_DIRECTORY:
+        description: 'Directory target for build'
+        required: false
+        type: string
+        default: build
+      ENVIRONMENT:
+        description: 'Environment to deploy to'
+        required: true
+        type: string
+      IS_LEGACY:
+        description: 'Is legacy project'
+        required: true
+        type: string
+        default: 'false'
+      NOTIFICATIONS_JIRA:
+        description: 'Send notifications to JIRA'
+        required: false
+        type: string
+      NOTIFICATIONS_TEAMS: # booleans must be treated as string
+        description: 'Send notifications to MS Teams'
+        required: false
+        type: string
+      SERVICE_NAME:
+        description: 'Name of the service to deploy'
+        required: true
+        type: string
+      SERVICE_NAMESPACE:
+        description: 'Namespace of the service to deploy'
+        required: true
+        type: string
+      TF_WORKING_DIRECTORY:
+        description: 'Terraform working directory'
+        required: false
+        type: string
+        default: .terraform/assets
+    secrets:
+      AWS_ACCESS_KEY_ID_TF:
+        required: true
+      AWS_SECRET_ACCESS_KEY_TF:
+        required: true
+      GH_TF_SSH_KEY:
+        required: true
+      MS_TEAMS_WEBHOOK_URI:
+        required: true
+      JIRA_USER_EMAIL:
+        required: true
+      JIRA_API_TOKEN:
+        required: true
+
+jobs:
+  prerequisites:
+    runs-on: ubuntu-latest
+    outputs:
+      COMMIT_MESSAGE: ${{ steps.git-commit.outputs.COMMIT_MESSAGE }}
+      DATADOG_URL: ${{ steps.output-datadog-url.outputs.DATADOG_URL }}
+      ENVIRONMENT: ${{ steps.check-context.outputs.ENVIRONMENT }}
+      JIRA_CODE: ${{ steps.check-context.outputs.JIRA_CODE }}
+      NOTIFICATIONS_JIRA: ${{ steps.set-var-default.outputs.NOTIFICATIONS_JIRA }}
+      NOTIFICATIONS_TEAMS: ${{ steps.set-var-default.outputs.NOTIFICATIONS_TEAMS }}
+      SHA_SHORT: ${{ steps.check-context.outputs.SHA_SHORT }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set env var as output to pass it to reusable workflows with 'needs'
+        id: set-var-default
+        run: |
+          # Handle optional inputs default values regarding various GitHub events
+
+          NOTIFICATIONS_JIRA=${{ inputs.NOTIFICATIONS_JIRA }}
+          echo "NOTIFICATIONS_JIRA=${NOTIFICATIONS_JIRA:-"true"}" >> ${GITHUB_OUTPUT}
+
+          NOTIFICATIONS_TEAMS=${{ inputs.NOTIFICATIONS_TEAMS }}
+          echo "NOTIFICATIONS_TEAMS=${NOTIFICATIONS_TEAMS:-"true"}" >> ${GITHUB_OUTPUT}
+
+      - id: check-context
+        uses: Sonergia/github-reusable-workflows/.github/actions/check-cdn-context@2.x
+        with:
+          IS_LEGACY: ${{ inputs.IS_LEGACY}}
+
+      - name: Git output commit message
+        id: git-commit
+        run: |
+          COMMIT_MESSAGE=$(git log -1 --pretty=format:"%s")
+          echo "COMMIT_MESSAGE=${COMMIT_MESSAGE}" >> ${GITHUB_OUTPUT}
+
+      - name: Put Datadog URL to OUTPUTS
+        id: output-datadog-url
+        run: |
+          echo "DATADOG_URL=https://app.datadoghq.eu/logs?query=env%3A${{ steps.check-context.outputs.ENVIRONMENT}}%20namespace%3A${{ inputs.SERVICE_NAMESPACE }}%20service_name%3A${{ inputs.SERVICE_NAME }}%20&cols=env%2Cnamespace%2Cservice%2Cversion%2Csha_short%2Csource%2C%40cloudfront.edge-location%2C%40http.method%2C%40http.status_code%2C%40http.url_details.path%2C%40s3.operation&index=%2A&messageDisplay=inline&refresh_mode=sliding&saved-view-id=96755&stream_sort=desc&viz=stream&from_ts=1698901003645&to_ts=1698915403645&live=true" >> ${GITHUB_OUTPUT}
+
+      - id: notify-workflow-start
+        if: always() && inputs.NOTIFICATIONS_TEAMS == 'true'
+        uses: Sonergia/github-reusable-workflows/.github/actions/ms-teams-notification@2.x
+        with:
+          MS_TEAMS_WEBHOOK_URI: ${{ secrets.MS_TEAMS_WEBHOOK_URI }}
+          ENVIRONMENT: ${{ steps.check-context.outputs.ENVIRONMENT }}
+          SUMMARY: Déploiement des assets pour le service ${{ inputs.SERVICE_NAME }} -> ${{ steps.check-context.outputs.ENVIRONMENT }} en cours...
+          COLOR: 999999
+          COMMIT_MESSAGE: ${{ steps.git-commit.outputs.COMMIT_MESSAGE }}
+          JIRA_CODE: ${{ steps.check-context.outputs.JIRA_CODE }}
+          FACT_STATUS: ⏱ In progress...
+          FACT_TYPE_NAME: Service assets
+          FACT_TYPE_VALUE: ${{ inputs.SERVICE_NAME }}
+          ACTION_DATADOG_URL: ${{ steps.output-datadog-url.outputs.DATADOG_URL }}
+
+      - name: Summary
+        shell: bash
+        if: always()
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Inputs | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "| --- | --- |" >> $GITHUB_STEP_SUMMARY
+          echo "| IS_LEGACY | \`${{ inputs.IS_LEGACY }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Outputs | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "| --- | --- |" >> $GITHUB_STEP_SUMMARY
+          echo "| COMMIT_MESSAGE | \`${{ steps.git-commit.outputs.COMMIT_MESSAGE }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| DATADOG_URL | [Link](${{ steps.output-datadog-url.outputs.DATADOG_URL }}) |" >> $GITHUB_STEP_SUMMARY
+          echo "| ENVIRONMENT | \`${{ steps.check-context.outputs.ENVIRONMENT }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| JIRA_CODE | \`${{ steps.check-context.outputs.JIRA_CODE }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| NOTIFICATIONS_JIRA | \`${{ steps.set-var-default.outputs.NOTIFICATIONS_JIRA }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| NOTIFICATIONS_TEAMS | \`${{ steps.set-var-default.outputs.NOTIFICATIONS_TEAMS }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| SHA_SHORT | \`${{ steps.check-context.outputs.SHA_SHORT }}\` |" >> $GITHUB_STEP_SUMMARY
+
+  build-assets:
+    runs-on: ubuntu-latest
+    outputs:
+      ARTIFACT_NAME: ${{ steps.build-node-app.outputs.ARTIFACT_NAME }}
+      ARCHIVE_FILENAME: ${{ steps.build-node-app.outputs.ARCHIVE_FILENAME }}
+      BUILD_DIRECTORY: ${{ steps.build-node-app.outputs.BUILD_DIRECTORY }}
+    strategy:
+      matrix:
+        node-version: [18.x]
+    needs: prerequisites
+    steps:
+      - uses: actions/checkout@v3
+
+      - id: build-node-app
+        uses: sonergia/github-reusable-workflows/.github/actions/build-node-app@2.x
+        with:
+          ARTIFACT_NAME: build-${{ needs.prerequisites.outputs.SHA_SHORT }}
+          BUILD_DIRECTORY: ${{ inputs.BUILD_DIRECTORY }}
+          ENVIRONMENT: ${{ needs.prerequisites.outputs.ENVIRONMENT }}
+          NODE_VERSION: ${{ matrix.node-version }}
+
+  # Terraform part
+  deploy-cdn:
+    needs:
+      - prerequisites
+    runs-on: ubuntu-latest
+    outputs:
+      ROLE_NAME_TO_ASSUME: ${{ steps.deploy-cdn.outputs.role_name_to_assume }}
+      BUCKET_NAME: ${{ steps.deploy-cdn.outputs.bucket_name }}
+      CLOUDFRONT_DISTRIBUTION_ID: ${{ steps.deploy-cdn.outputs.cloudfront_distribution_id }}
+      DOMAIN_NAMES: ${{ steps.deploy-cdn.outputs.DOMAIN_NAMES }}
+      PUBLIC_URL: ${{ steps.output-public-url.outputs.PUBLIC_URL }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - id: deploy-cdn
+        uses: sonergia/github-reusable-workflows/.github/actions/deploy-cdn@2.x
+        with:
+          AWS_ACCESS_KEY_ID_TF: ${{ secrets.AWS_ACCESS_KEY_ID_TF }}
+          AWS_DEFAULT_REGION: ${{ inputs.AWS_DEFAULT_REGION }}
+          AWS_SECRET_ACCESS_KEY_TF: ${{ secrets.AWS_SECRET_ACCESS_KEY_TF }}
+          GH_TF_SSH_KEY: ${{ secrets.GH_TF_SSH_KEY }}
+          SERVICE_NAME: ${{ inputs.SERVICE_NAME }}
+          SERVICE_NAMESPACE: ${{ inputs.SERVICE_NAMESPACE }}
+          TF_WORKING_DIRECTORY: ${{ inputs.TF_WORKING_DIRECTORY }}
+          TAG_NAME: ${{ needs.prerequisites.outputs.JIRA_CODE }}
+          SHA_SHORT: ${{ needs.prerequisites.outputs.SHA_SHORT }}
+          ENVIRONMENT: ${{ needs.prerequisites.outputs.ENVIRONMENT }}
+
+      - id: output-public-url
+        name: Output public url prefixed
+        run: |
+          PUBLIC_URL=
+          for LINK in  ${{ steps.deploy-cdn.outputs.DOMAIN_NAMES }}; do
+            PUBLIC_URL="https://$LINK $PUBLIC_URL";
+          done;
+          echo "PUBLIC_URL=${PUBLIC_URL}" >> ${GITHUB_OUTPUT}
+
+  upload-files:
+    runs-on: ubuntu-latest
+    needs:
+      - build-assets
+      - deploy-cdn
+    steps:
+      - uses: actions/checkout@v3
+
+      # Get & untar assets
+      - uses: actions/download-artifact@v3
+        with:
+          name: ${{ needs.build-assets.outputs.ARTIFACT_NAME }}
+
+      - name: Untar and delete build archive
+        shell: bash
+        run: tar -xvf ${{ needs.build-assets.outputs.ARCHIVE_FILENAME }} && rm ${{ needs.build-assets.outputs.ARCHIVE_FILENAME }}
+
+      - name: Assume AWS role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ inputs.AWS_DEFAULT_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_TF }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_TF }}
+          role-to-assume: ${{ needs.deploy-cdn.outputs.ROLE_NAME_TO_ASSUME }}
+          # failed to satisfy constraint: Member must have value greater than or equal to 900
+          role-duration-seconds: 900
+          role-chaining: true
+
+      # TODO: sync only if needed
+      - name: Copy files to the bucket with the AWS CLI
+        run: aws s3 sync ${{ needs.build-assets.outputs.BUILD_DIRECTORY }} s3://${{ needs.deploy-cdn.outputs.BUCKET_NAME }} --delete
+
+      # TODO: invalidate only if needed
+      - name: Create invalidation
+        run: aws cloudfront create-invalidation --distribution-id ${{ needs.deploy-cdn.outputs.CLOUDFRONT_DISTRIBUTION_ID }} --paths "/*"
+
+  feedback:
+    runs-on: ubuntu-latest
+    needs:
+      - prerequisites
+      - build-assets
+      - deploy-cdn
+      - upload-files
+    if: always()
+    steps:
+      - name: Deploy status
+        id: output-deploy-status
+        run: |
+          if [ "${{ contains(needs.*.result, 'failure') }}" == 'true' ]; then
+            DEPLOY_STATUS="❌ failure erreur de CICD, appelle un DevOps !"
+            DEPLOY_COLOR=cb2431
+            GITHUB_DEPLOYMENT_STATUS=failure
+          elif [ "${{ contains(needs.*.result, 'cancelled') }}" == 'true' ]; then
+            DEPLOY_STATUS="❗cancelled"
+            DEPLOY_COLOR=ffc107
+            GITHUB_DEPLOYMENT_STATUS=cancelled
+          else
+            DEPLOY_STATUS="✅ success"
+            DEPLOY_COLOR=2cbe4e
+            GITHUB_DEPLOYMENT_STATUS=success
+          fi
+          echo "DEPLOY_STATUS=${DEPLOY_STATUS}" >> ${GITHUB_OUTPUT}
+          echo "DEPLOY_COLOR=${DEPLOY_COLOR}" >> ${GITHUB_OUTPUT}
+          echo "GITHUB_DEPLOYMENT_STATUS=${GITHUB_DEPLOYMENT_STATUS}" >> ${GITHUB_OUTPUT}
+
+      - name: Map vars with github environment
+        id: map-github-env
+        if: always()
+        run: |
+          # Available env: development, testing, staging, or production
+          # See .jira/config.yml for environments mapping with ours
+          GITHUB_ENVIRONMENT=${{ needs.prerequisites.outputs.ENVIRONMENT }}
+          echo "GITHUB_ENVIRONMENT=${GITHUB_ENVIRONMENT}" >> ${GITHUB_OUTPUT}
+
+      - name: Create GitHub deployment
+        id: github-deployment
+        uses: chrnorm/deployment-action@v2
+        # only for valid state
+        if: always() && contains('error failure in_progress queued pending success', steps.output-deploy-status.outputs.GITHUB_DEPLOYMENT_STATUS)
+        with:
+          token: ${{ github.token }}
+          # error, failure, in_progress, queued, pending, success, (inactive)
+          initial-status: ${{ steps.output-deploy-status.outputs.GITHUB_DEPLOYMENT_STATUS }}
+          auto-inactive: false
+          task: deploy-assets-${{ inputs.SERVICE_NAMESPACE }}-${{ inputs.SERVICE_NAME }}
+          log-url: ${{ needs.deploy-cdn.outputs.PUBLIC_URL }}
+          environment: ${{ steps.map-github-env.outputs.GITHUB_ENVIRONMENT }}
+          # Specifies if the given environment is specific to the deployment and will no longer exist at some point in the future.
+          transient-environment: ${{ needs.prerequisites.outputs.ENVIRONMENT != 'prod' }}
+          description: ${{ inputs.SERVICE_NAMESPACE }} (${{ inputs.SERVICE_NAME }} / ${{ needs.prerequisites.outputs.JIRA_CODE }}) assets deployed on ${{ needs.prerequisites.outputs.ENVIRONMENT }}
+
+      - name: Login JIRA
+        uses: atlassian/gajira-login@master
+        if: |
+          always() &&
+          needs.prerequisites.outputs.NOTIFICATIONS_JIRA == 'true' &&
+          needs.prerequisites.outputs.JIRA_CODE != ''
+        env:
+          JIRA_BASE_URL: https://sonergia.atlassian.net
+          JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+
+      - name: Comment on JIRA issue
+        uses: atlassian/gajira-comment@v3
+        if: |
+          always() &&
+          needs.prerequisites.outputs.NOTIFICATIONS_JIRA == 'true' &&
+          needs.prerequisites.outputs.JIRA_CODE != ''
+        with:
+          issue: ${{ needs.prerequisites.outputs.JIRA_CODE }}
+          comment: |
+            Assets déployés sur l'environnement ${{ needs.prerequisites.outputs.ENVIRONMENT }}. :
+              - 🔗 public: ${{ needs.deploy-cdn.outputs.PUBLIC_URL }}
+              - 🐕 Datadog: ${{ needs.prerequisites.outputs.DATADOG_URL }}
+              - ☁️ AWS console: https://us-east-1.console.aws.amazon.com/cloudfront/v4/home?region=eu-west-3#/distributions/${{ needs.deploy-cdn.outputs.CLOUDFRONT_DISTRIBUTION_ID }}
+
+      # Notify at the end of workflow
+      - name: Notify teams channel
+        if: always() && needs.prerequisites.outputs.NOTIFICATIONS_TEAMS == 'true'
+        uses: sonergia/github-reusable-workflows/.github/actions/ms-teams-notification@2.x
+        with:
+          MS_TEAMS_WEBHOOK_URI: ${{ secrets.MS_TEAMS_WEBHOOK_URI }}
+          ENVIRONMENT: ${{ needs.prerequisites.outputs.ENVIRONMENT }}
+          SUMMARY: Déploiement des assets pour le service ${{ inputs.SERVICE_NAME }} -> ${{ needs.prerequisites.outputs.ENVIRONMENT }} terminé !
+          COLOR: ${{ steps.output-deploy-status.outputs.DEPLOY_COLOR }}
+          COMMIT_MESSAGE: ${{ needs.prerequisites.outputs.COMMIT_MESSAGE }}
+          JIRA_CODE: ${{ needs.prerequisites.outputs.JIRA_CODE }}
+          FACT_STATUS: ${{ steps.output-deploy-status.outputs.DEPLOY_STATUS}}
+          FACT_TYPE_NAME: Service assets
+          FACT_TYPE_VALUE: ${{ inputs.SERVICE_NAME }}
+          ACTION_PUBLIC_URL: '${{ needs.deploy-cdn.outputs.PUBLIC_URL }}'
+          ACTION_DATADOG_URL: ${{ needs.prerequisites.outputs.DATADOG_URL }}

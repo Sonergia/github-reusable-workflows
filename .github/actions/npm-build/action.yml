@@ -1,0 +1,37 @@
+name: Build Node app using npm
+description: Build Node app using npm
+
+inputs:
+  BUILD_DIRECTORY:
+    description: 'The directory where the build output will be placed'
+    required: true
+  ENVIRONMENT:
+    description: 'The environment to build for'
+    required: true
+  NODE_VERSION:
+    description: 'The version of Node.js to use'
+    required: false
+    default: '18.x'
+  WORKING_DIRECTORY:
+    description: 'The directory where the action should run'
+    required: false
+    default: '.'
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ inputs.NODE_VERSION }}
+    - name: Install dependencies (npm)
+      shell: bash
+      run: npm install
+      working-directory: ${{ inputs.WORKING_DIRECTORY }}
+    - name: Build application
+      shell: bash
+      # works with react-scripts >= 4.0.2
+      env:
+        BUILD_PATH: ${{ inputs.BUILD_DIRECTORY }}
+      run: npm run build
+      working-directory: ${{ inputs.WORKING_DIRECTORY }}

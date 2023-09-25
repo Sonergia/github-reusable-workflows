@@ -19,11 +19,11 @@ on:
         required: true
         type: string
       SHA_SHORT:
-        description: "Git commit SHA short (without 'sha-' prefix)"
+        description: 'Git commit SHA short (without "sha-" prefix)'
         required: false
         type: string
         default: ''
-      NOTIFICATIONS_TEAMS:  # booleans must be treated as string
+      NOTIFICATIONS_TEAMS: # booleans must be treated as string
         required: false
         type: string
         default: 'true'
@@ -37,25 +37,25 @@ on:
     # Map the workflow outputs to job outputs
     outputs:
       SHA_SHORT:
-        description: "Define SHA_SHORT from input or current git commit SHA"
+        description: 'Define SHA_SHORT from input or current git commit SHA'
         value: ${{ jobs.check-context.outputs.SHA_SHORT }}
       IMAGE_SHA:
-        description: "Define IMAGE_SHA from input or current git commit SHA"
+        description: 'Define IMAGE_SHA from input or current git commit SHA'
         value: ${{ jobs.check-context.outputs.IMAGE_SHA }}
       IMAGE_EXISTS:
-        description: "Indicate if Docker image already exists in ECR for current git commit SHA"
+        description: 'Indicate if Docker image already exists in ECR for current git commit SHA'
         value: ${{ jobs.check-context.outputs.IMAGE_EXISTS }}
       CLUSTER:
         description: "Cluster name to deploy onto (sandbox, test, release, prod)"
         value: ${{ jobs.check-context.outputs.CLUSTER }}
       JIRA_CODE:
-        description: "JIRA ticket code found in branch name"
+        description: 'JIRA ticket code found in branch name'
         value: ${{ jobs.check-context.outputs.JIRA_CODE }}
       IMAGE_TAG:
-        description: "Docker image tag"
+        description: 'Docker image tag'
         value: ${{ jobs.check-context.outputs.IMAGE_TAG }}
       CREATE_TAG_LATEST:
-        description: "Docker image should be tag as latest"
+        description: 'Docker image should be tag as latest'
         value: ${{ jobs.check-context.outputs.CREATE_TAG_LATEST }}
 
 jobs:
@@ -88,7 +88,6 @@ jobs:
             exit 1
           fi
 
-          echo "::notice title=Check GIT SHA::GIT SHA output value is '${SHA_SHORT}'"
           echo "SHA_SHORT=${SHA_SHORT}" >> ${GITHUB_OUTPUT}
           echo "IMAGE_SHA=sha-${SHA_SHORT}" >> ${GITHUB_OUTPUT}
 
@@ -125,6 +124,7 @@ jobs:
 
       - name: Check if image SHA tag and release tag already exists in ECR, add release tag otherwise
         id: check-image-ecr
+        if: inputs.IMAGE_NAMES != '[]'
         run: ./.github/scripts/check-image-ecr.sh ${{ inputs.SERVICE_NAMESPACE }} "${{ join(fromJson(inputs.IMAGE_NAMES), ' ') }}" ${{ steps.git-sha.outputs.IMAGE_SHA }}
 
       - name: Set context from git and inputs
@@ -149,8 +149,35 @@ jobs:
           FACT_STATUS: ⏱ in progress...
           FACT_TYPE_NAME: Service(s)
           FACT_TYPE_VALUE: ${{ join(fromJson(inputs.SERVICES), ',') }}
-          ACTION_DATADOG_URL: "https://app.datadoghq.eu/logs?query=cluster:${{ steps.set-context.outputs.CLUSTER }}%20namespace:${{ inputs.SERVICE_NAMESPACE }}&cols=privatedns,servicename"
+          ACTION_DATADOG_URL: 'https://app.datadoghq.eu/logs?query=cluster:${{ steps.set-context.outputs.CLUSTER }}%20namespace:${{ inputs.SERVICE_NAMESPACE }}&cols=privatedns,servicename'
           # ACTION_AWS_URL: "https://${{ inputs.AWS_DEFAULT_REGION }}.console.aws.amazon.com/ecs/v2/clusters/${{ inputs.CLUSTER }}/services?region=${{ inputs.AWS_DEFAULT_REGION }}"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Github context" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Event | ref_type | ref_name |" >> $GITHUB_STEP_SUMMARY
+          echo "| ----- | -------- | -------- |" >> $GITHUB_STEP_SUMMARY
+          echo "| ${{ github.event_name }} | ${{ github.event.ref_type }} | ${{ github.event.ref }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Output values" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Name | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "| ---- | ----- |" >> $GITHUB_STEP_SUMMARY
+          echo "| CLUSTER | ${{ steps.set-context.outputs.CLUSTER }} |" >> $GITHUB_STEP_SUMMARY
+          if [ ${{inputs.IMAGE_NAMES}} != '[]' ]; then
+            echo "| CREATE_TAG_LATEST | ${{ steps.set-context.outputs.CREATE_TAG_LATEST }} |" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "| ENVIRONMENT | ${{ steps.set-context.outputs.ENVIRONMENT }} |" >> $GITHUB_STEP_SUMMARY
+          if [ ${{inputs.IMAGE_NAMES}} != '[]' ]; then
+            echo "| IMAGE_EXISTS | ${{ steps.check-image-ecr.outputs.IMAGE_EXISTS }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| IMAGE_SHA | ${{ steps.git-sha.outputs.IMAGE_SHA }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| IMAGE_TAG | ${{ steps.set-context.outputs.IMAGE_TAG }} |" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "| JIRA_CODE | ${{ steps.set-context.outputs.JIRA_CODE }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| SHA_SHORT | ${{ steps.git-sha.outputs.SHA_SHORT }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
 
     outputs:
       SHA_SHORT: ${{ steps.git-sha.outputs.SHA_SHORT }}

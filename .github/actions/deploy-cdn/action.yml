@@ -1,0 +1,132 @@
+name: ☁️ Create AWS Cloudfront distribution (CDN)
+description: Create AWS Cloudfront distribution (CDN)
+
+inputs:
+  ENVIRONMENT:
+    description: 'ENVIRONMENT/environment to deploy to'
+    required: true
+  SERVICE_NAME:
+    description: 'The name of the service'
+    required: true
+  SERVICE_NAMESPACE:
+    description: 'The namespace of the service'
+    required: true
+  TAG_NAME:
+    description: 'The tag name of the service'
+    required: true
+  SHA_SHORT:
+    description: 'The short SHA of the service'
+    required: true
+
+  # Terraform settings
+  TF_VERSION_CONSTRAINT:
+    description: 'The version of Terraform to use'
+    required: false
+    default: '~> 1.3.0'
+  TF_WORKING_DIRECTORY:
+    description: 'The working directory to use'
+    required: true
+
+  # Secrets
+  AWS_ACCESS_KEY_ID_TF:
+    required: true
+    description: 'AWS Access Key ID'
+  AWS_SECRET_ACCESS_KEY_TF:
+    required: true
+    description: 'AWS Secret Access Key'
+  GH_TF_SSH_KEY:
+    description: 'SSH key to access private Terraform modules'
+    required: true
+  AWS_DEFAULT_REGION:
+    description: 'AWS region'
+    required: false
+    default: eu-west-3
+
+outputs:
+  BUCKET_NAME:
+    description: 'The name of the bucket where assets are deployed'
+    value: ${{ steps.tf-output.outputs.BUCKET_NAME }}
+  CLOUDFRONT_DISTRIBUTION_ID:
+    description: 'The ID of the Cloudfront distribution'
+    value: ${{ steps.tf-output.outputs.CLOUDFRONT_DISTRIBUTION_ID }}
+  DOMAIN_NAMES:
+    description: 'The domain name of the Cloudfront distribution'
+    value: ${{ steps.tf-output.outputs.DOMAIN_NAMES }}
+  ROLE_NAME_TO_ASSUME:
+    description: 'The name of the role to assume to deploy assets & create invalidation'
+    value: ${{ steps.tf-output.outputs.ROLE_NAME_TO_ASSUME }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v3
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ inputs.AWS_ACCESS_KEY_ID_TF }}
+        aws-secret-access-key: ${{ inputs.AWS_SECRET_ACCESS_KEY_TF }}
+        aws-region: ${{ inputs.AWS_DEFAULT_REGION }}
+
+    # Terraform
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v2
+      with:
+        terraform_wrapper: false
+        terraform_version: ${{ inputs.TF_VERSION_CONSTRAINT }}
+
+    - name: Terraform init assets '${{ inputs.SERVICE_NAME }}' on environment '${{ inputs.ENVIRONMENT }}' configuration
+      id: tf-init
+      shell: bash
+      working-directory: ${{ inputs.TF_WORKING_DIRECTORY }}
+      env:
+        GIT_SSH_COMMAND: "echo '${{ inputs.GH_TF_SSH_KEY }}' > id_rsa
+          && ssh-keyscan github.com > known_hosts
+          && chmod 600 id_rsa known_hosts
+          && ssh -i ./id_rsa -o UserKnownHostsFile=./known_hosts"
+      run: |
+        terraform version | head -1
+        terraform init -reconfigure -upgrade -backend-config=backend-${{ inputs.ENVIRONMENT }}.conf
+
+    - name: Terraform validate
+      id: tf-validate
+      shell: bash
+      if: steps.tf-init.conclusion != 'failure'
+      working-directory: ${{ inputs.TF_WORKING_DIRECTORY }}
+      run: |
+        # To activate debug logs
+        # export TF_LOG=debug
+        terraform validate -no-color
+
+    - name: Terraform Apply
+      id: tf-apply-assets
+      shell: bash
+      working-directory: ${{ inputs.TF_WORKING_DIRECTORY }}
+      run: |
+        terraform apply -auto-approve \
+          -var-file=terraform-${{ inputs.ENVIRONMENT }}.tfvars \
+          -var="tag_name=${{ inputs.TAG_NAME }}" \
+          -var="sha_short=${{ inputs.SHA_SHORT }}"
+
+    - name: Terraform Output
+      id: tf-output
+      shell: bash
+      working-directory: ${{ inputs.TF_WORKING_DIRECTORY }}
+      run: |
+        echo "BUCKET_NAME=$(terraform output -raw bucket_name)" >> ${GITHUB_OUTPUT}
+        echo "CLOUDFRONT_DISTRIBUTION_ID=$(terraform output -raw cloudfront_distribution_id)" >> ${GITHUB_OUTPUT}
+        echo "DOMAIN_NAMES=$(terraform output -raw domain_names | jq -rc '.[]')" >> ${GITHUB_OUTPUT}
+        echo "ROLE_NAME_TO_ASSUME=$(terraform output -raw role_name_to_assume)" >> ${GITHUB_OUTPUT}
+
+    - name: Action summary
+      shell: bash
+      run: |
+        echo "Deployed resources" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY # this is a blank line
+        echo "- Bucket name : ${{ steps.tf-output.outputs.BUCKET_NAME }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Cloudfront distribution id : ${{ steps.tf-output.outputs.CLOUDFRONT_DISTRIBUTION_ID }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Domain names : " >> $GITHUB_STEP_SUMMARY
+        for LINK in  ${{ steps.tf-output.outputs.DOMAIN_NAMES }}; do
+          echo -e "\t - [$LINK](https://$LINK)" >> $GITHUB_STEP_SUMMARY;
+        done;
+        echo "- Role name to assume : ${{ steps.tf-output.outputs.ROLE_NAME_TO_ASSUME }}" >> $GITHUB_STEP_SUMMARY

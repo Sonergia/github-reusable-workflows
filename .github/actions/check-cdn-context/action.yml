@@ -1,0 +1,43 @@
+name: Check context (CDN)
+description: Check context (CDN)
+inputs:
+  IS_LEGACY:
+    required: false
+    description: 'Is legacy service'
+    default: 'false'
+
+outputs:
+  ENVIRONMENT:
+    description: 'Environment to deploy to'
+    value: ${{ steps.check-context.outputs.ENVIRONMENT }}
+  JIRA_CODE:
+    description: 'JIRA ticket code found in branch name'
+    value: ${{ steps.check-context.outputs.JIRA_CODE }}
+  SHA_SHORT:
+    description: 'Define SHA_SHORT from input or current git commit SHA'
+    value: ${{ steps.git-sha.outputs.SHA_SHORT }}
+
+runs:
+  using: 'composite'
+  steps:
+    - uses: actions/checkout@v3
+
+    # Get commit SHA before checking out reusable workflows
+    - name: Git output SHA short
+      shell: bash
+      id: git-sha
+      run: |
+        SHA_SHORT=$(git rev-parse --short HEAD)
+
+        if [ -z ${SHA_SHORT} ]; then
+          echo ":red_cross: GIT SHA can not be empty" >> $GITHUB_STEP_SUMMARY
+          exit 1
+        fi
+
+        echo "SHA_SHORT=${SHA_SHORT}" >> ${GITHUB_OUTPUT}
+
+    - name: Set context from git and inputs
+      shell: bash
+      id: check-context
+      run: |
+        ${{ github.action_path }}/check-context.sh -- "${{ inputs.IS_LEGACY }}"

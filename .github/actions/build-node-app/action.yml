@@ -1,0 +1,124 @@
+name: Build Node application and upload build artifact
+description: Builds a Node application and uploads the build artifact
+
+inputs:
+  ARTIFACT_NAME:
+    description: 'The name of the build artifact'
+    required: false
+    default: build-${{ github.sha }}
+  BUILD_DIRECTORY:
+    description: 'The directory where the build output will be placed'
+    required: false
+    default: 'build'
+  ENVIRONMENT:
+    description: 'The environment to build for'
+    required: true
+  NODE_VERSION:
+    description: 'The version of Node.js to use'
+    required: false
+  PNPM_VERSION:
+    description: 'The version of pnpm to use'
+    required: false
+  WORKING_DIRECTORY:
+    description: 'The directory where the build action should run'
+    required: false
+    default: '.'
+  # depends on node version
+  # YARN_VERSION:
+  #   description: 'The version of yarn to use'
+  #   required: false
+
+outputs:
+  ARTIFACT_NAME:
+    description: 'The name of the build artifact'
+    value: ${{ inputs.ARTIFACT_NAME }}
+  ARCHIVE_FILENAME:
+    description: "The archive's name of the build artifact"
+    value: ${{ steps.compress.outputs.ARCHIVE_FILENAME }}
+  BUILD_DIRECTORY:
+    description: 'The directory where the build output will be placed'
+    value: ${{ inputs.BUILD_DIRECTORY }}
+
+runs:
+  using: composite
+  steps:
+    - name: Define variables
+      shell: bash
+      run: |
+        echo "ARCHIVE_FILENAME=${{ inputs.BUILD_DIRECTORY }}.tar" >> $GITHUB_ENV
+
+    - shell: bash
+      run: |
+        if [ -e ${{ inputs.ENVIRONMENT }}.env ]; then
+          echo "- :white_check_mark: Env file \`${{inputs.ENVIRONMENT}}.env\` used for build" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "- :x: Env file \`${{inputs.ENVIRONMENT}}.env\` not found for build to ${{ inputs.ENVIRONMENT }} environment" >> $GITHUB_STEP_SUMMARY
+          exit 1
+        fi
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+    - name: Import environment variables from file
+      id: import-env
+      uses: falti/dotenv-action@v1.0.4
+      with:
+        path: '${{ inputs.ENVIRONMENT }}.env'
+        export-variables: true
+        keys-case: 'bypass'
+
+    # npm
+    - id: npm-build
+      if: ${{ hashFiles('package-lock.json') != '' }}
+      uses: Sonergia/github-reusable-workflows/.github/actions/npm-build@2.x
+      with:
+        BUILD_DIRECTORY: ${{ inputs.BUILD_DIRECTORY }}
+        ENVIRONMENT: ${{ inputs.ENVIRONMENT }}
+        NODE_VERSION: ${{ inputs.NODE_VERSION }}
+        WORKING_DIRECTORY: ${{ inputs.WORKING_DIRECTORY }}
+
+    # pnpm
+    - id: pnpm-build
+      if: ${{ hashFiles('pnp-lock.yml') != '' }}
+      uses: Sonergia/github-reusable-workflows/.github/actions/pnpm-build@2.x
+      with:
+        BUILD_DIRECTORY: ${{ inputs.BUILD_DIRECTORY }}
+        ENVIRONMENT: ${{ inputs.ENVIRONMENT }}
+        NODE_VERSION: ${{ inputs.NODE_VERSION }}
+        PNPM_VERSION: ${{ inputs.PNPM_VERSION }}
+        WORKING_DIRECTORY: ${{ inputs.WORKING_DIRECTORY }}
+
+    # yarn
+    - id: yarn-build
+      if: ${{ hashFiles('yarn.lock') != '' }}
+      uses: Sonergia/github-reusable-workflows/.github/actions/yarn-build@2.x
+      with:
+        BUILD_DIRECTORY: ${{ inputs.BUILD_DIRECTORY }}
+        ENVIRONMENT: ${{ inputs.ENVIRONMENT }}
+        NODE_VERSION: ${{ inputs.NODE_VERSION }}
+        WORKING_DIRECTORY: ${{ inputs.WORKING_DIRECTORY }}
+
+    - name: Compress build directory
+      id: compress
+      shell: bash
+      run: |
+        tar -cvf ${ARCHIVE_FILENAME} ${{ inputs.BUILD_DIRECTORY }}
+        echo "ARCHIVE_FILENAME=${ARCHIVE_FILENAME}" >> $GITHUB_OUTPUT
+      working-directory: ${{ inputs.WORKING_DIRECTORY }}
+
+    - name: Upload build artifact
+      id: upload-artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ inputs.ARTIFACT_NAME }}
+        path: ${{ env.ARCHIVE_FILENAME }}
+
+    - name: Summary
+      if: always()
+      shell: bash
+      run: |
+        if [ "${{ steps.upload-artifact.conclusion }}" == "success" ]; then
+          echo "- Artifact généré : \`${{ inputs.ARTIFACT_NAME }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Archive à extraire de l'artifact : \`${{ env.ARCHIVE_FILENAME }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Dossier du build dans l'archive : \`${{ inputs.BUILD_DIRECTORY }}\`" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "- :x: Erreur lors de la génération de l'artifact" >> $GITHUB_STEP_SUMMARY
+        fi
