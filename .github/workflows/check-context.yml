@@ -46,7 +46,7 @@ on:
         description: "Indicate if Docker image already exists in ECR for current git commit SHA"
         value: ${{ jobs.check-context.outputs.IMAGE_EXISTS }}
       CLUSTER:
-        description: "Cluster name to deploy onto (test, release, prod)"
+        description: "Cluster name to deploy onto (sandbox, test, release, prod)"
         value: ${{ jobs.check-context.outputs.CLUSTER }}
       JIRA_CODE:
         description: "JIRA ticket code found in branch name"

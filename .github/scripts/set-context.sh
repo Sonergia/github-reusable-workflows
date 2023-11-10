@@ -22,6 +22,16 @@ set -e
 # GITHUB_HEAD_REF=feature/TOTO-4567_blablabla
 # GITHUB_REF_NAME=feature/TOTO-4567_blablabla
 
+# case workflow_dispatch to sandbox
+# GITHUB_REF_TYPE=branch
+# GITHUB_EVENT_NAME=workflow_dispatch
+# ENVIRONMENT=sandbox
+# GITHUB_REF=refs/pull/1234/merge
+# GITHUB_REF_NAME=feature/test
+# GITHUB_REF_NAME=feature/TOTO-4567_blablabla
+# GITHUB_SHA="26e20b6f463484417188263bf58b1bae71ffa8b9"
+# GITHUB_OUTPUT=/dev/stdout
+
 # # Successful case latest
 # GITHUB_REF_TYPE=branch
 # GITHUB_EVENT_NAME=pull_request
@@ -66,11 +76,12 @@ function getJiraCodeFromBranch {
 
     # Check JIRA ticket code format and clean up if not compliant
     if [ ! -z "${JIRA_CODE}" ]; then
-        JIRA_CODE=$(echo ${JIRA_CODE} | grep -P -o '^[A-Z]{2,}-[0-9]+')
+        # avoid exit code in case JIRA_CODE does not match
+        JIRA_CODE=$(echo ${JIRA_CODE} | grep -P -o '^[A-Z]{2,}-[0-9]+' || echo "")
         echo "::notice title=Set context::JIRA_CODE output value is '${JIRA_CODE}'"
     fi
 
-    if [ -z "${JIRA_CODE}" ]; then
+    if [ -z "${JIRA_CODE}" ] && [ "${ENVIRONMENT}" != sandbox ]; then
         echo "::warning title=Set context::Naming convention error: could not extract JIRA ticket code from source branch ref '${GITHUB_REF_NAME}'"
     fi
 }
@@ -102,11 +113,24 @@ if [ -z ${IS_LEGACY} ]; then
 fi
 
 # Manual case uses image static tag
-if  [ ${GITHUB_EVENT_NAME} = "workflow_dispatch" ]; then
+if [ ${GITHUB_EVENT_NAME} = "workflow_dispatch" ]; then
     getJiraCodeFromBranch
     IMAGE_TAG=${JIRA_CODE}
-    ENVIRONMENT_OUTPUT=$([ "${IS_LEGACY}" = "true" ] && echo "development" || echo "test")
-elif  [ ${GITHUB_REF_TYPE} = "tag" ] && [ ${GITHUB_EVENT_NAME} = "release" ]; then
+    # use short SHA for sandbox if JIRA code is not set
+    if [ "${ENVIRONMENT}" = 'sandbox' ] && [ -z "${IMAGE_TAG}" ]; then
+        IMAGE_TAG=$(echo "${GITHUB_SHA}" | cut -c1-7)
+    fi
+    if [ "${IS_LEGACY}" = "true" ]; then
+        ENVIRONMENT_OUTPUT="development"
+    else
+        # Check if environment is test or sandbox before using it
+        if [ "${ENVIRONMENT}" != "test" ] && [ "${ENVIRONMENT}" != "sandbox" ]; then
+            echo "::error title=Set context::Invalid environment: '${ENVIRONMENT}'. Only 'test' and 'sandbox' environments are allowed for ${GITHUB_EVENT_NAME} events."
+            exit 1
+        fi
+        ENVIRONMENT_OUTPUT="$ENVIRONMENT"
+    fi
+elif [ ${GITHUB_REF_TYPE} = "tag" ] && [ ${GITHUB_EVENT_NAME} = "release" ]; then
     # Tag git
     IMAGE_TAG=${GITHUB_REF_NAME}
 
@@ -145,7 +169,7 @@ if [ -z "${ENVIRONMENT_OUTPUT}" ]; then
 #     exit 1
 fi
 
-if  [ ${IS_LAMBDA} = "false" ]; then
+if [ ${IS_LAMBDA} = "false" ]; then
     echo "::notice title=Set context::Image tag output value is '${IMAGE_TAG}'"
     echo "::notice title=Set context::Create tag latest is '${CREATE_TAG_LATEST}'"
 
@@ -155,10 +179,10 @@ if  [ ${IS_LAMBDA} = "false" ]; then
     fi
 
     # New ECS infra expects CLUSTER var instead of ENVIRONMENT => to fix
-    echo "CLUSTER=${ENVIRONMENT_OUTPUT}" >> ${GITHUB_OUTPUT}
-    echo "IMAGE_TAG=${IMAGE_TAG}" >> ${GITHUB_OUTPUT}
-    echo "CREATE_TAG_LATEST=${CREATE_TAG_LATEST}" >> ${GITHUB_OUTPUT}
+    echo "CLUSTER=${ENVIRONMENT_OUTPUT}" >>${GITHUB_OUTPUT}
+    echo "IMAGE_TAG=${IMAGE_TAG}" >>${GITHUB_OUTPUT}
+    echo "CREATE_TAG_LATEST=${CREATE_TAG_LATEST}" >>${GITHUB_OUTPUT}
 fi
 
-echo "ENVIRONMENT=${ENVIRONMENT_OUTPUT}" >> ${GITHUB_OUTPUT}
-echo "JIRA_CODE=${JIRA_CODE}" >> ${GITHUB_OUTPUT}
+echo "ENVIRONMENT=${ENVIRONMENT_OUTPUT}" >>${GITHUB_OUTPUT}
+echo "JIRA_CODE=${JIRA_CODE}" >>${GITHUB_OUTPUT}

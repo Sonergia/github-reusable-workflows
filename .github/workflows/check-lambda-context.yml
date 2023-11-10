@@ -42,7 +42,7 @@ on:
         description: "Define SHA_SHORT from input or current git commit SHA"
         value: ${{ jobs.check-context.outputs.SHA_SHORT }}
       ENVIRONMENT:
-        description: "Cluster name to deploy onto (test, release, prod)"
+        description: "Cluster name to deploy onto (sandbox, test, release, prod)"
         value: ${{ jobs.check-context.outputs.ENVIRONMENT }}
       JIRA_CODE:
         description: "JIRA ticket code found in branch name"
