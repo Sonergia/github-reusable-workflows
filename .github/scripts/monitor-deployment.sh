@@ -22,7 +22,7 @@ SERVICE=${2:?SERVICE is required}
 
 SERVICE_DEPLOYMENT_ROLLBACK=0
 SERVICE_DEPLOYMENT_ERROR=0
-MAX_FAILED_TASKS_COUNT=1
+MAX_FAILED_TASKS_COUNT=2
 DESCRIBE_SERVICE=$(aws ecs describe-services --cluster ${CLUSTER} --services ${SERVICE})
 SERVICE_DEPLOYMENT_IN_PROGRESS=$(echo "${DESCRIBE_SERVICE}" | jq ".services[].deployments[] \
     | select(.status == \"PRIMARY\") | select(.rolloutState == \"IN_PROGRESS\")")
