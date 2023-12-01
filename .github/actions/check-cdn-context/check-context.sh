@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+# Define variables
+readonly SCRIPT_NAME=$(basename "${0}")
+readonly SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+
+# Define functions
+function usage() {
+    cat <<EOF
+Usage: ${SCRIPT_NAME} [OPTIONS] [IS_LEGACY]
+
+    IS_LEGACY       Flag to set legacy or not legacy environment (true or false)
+
+OPTIONS:
+    -h, --help      Show this help message and exit
+EOF
+}
+
+# Extract JIRA code from branch name
+function getJiraCodeFromBranch {
+    # Get PR number from GITHUB_REF
+    # PR_NUMBER=$(echo ${GITHUB_REF} | awk 'BEGIN { FS = "/" } ; { print $3 }')
+
+    # Check if source branch is project or epic
+    if [[ ${GITHUB_REF_NAME} =~ ^(project|epic)/.*$ ]]; then
+        # Extract JIRA codes from branch pattern (ex: project/MAESTRO-1186/feature/MAESTRO-1151)
+        JIRA_CODE=$(echo "${GITHUB_REF_NAME}" | awk 'BEGIN { FS = "/" } ; { print $4 }')
+    else
+        # Extract JIRA codes from branch pattern (ex: feature/MAESTRO-1280, or tech/DEVOPS-160_refactoring)
+        JIRA_CODE=$(echo "${GITHUB_REF_NAME}" | awk 'BEGIN { FS = "/" } ; { print $2 }')
+    fi
+
+    # Check JIRA ticket code format and clean up if not compliant
+    if [ ! -z "${JIRA_CODE}" ]; then
+        JIRA_CODE=$(echo "${JIRA_CODE}" | grep -P -o '^[A-Z]{2,}-[0-9]+')
+        # echo "::notice title=Set context::JIRA_CODE output value is '${JIRA_CODE}'"
+    fi
+
+    if [ -z "${JIRA_CODE}" ]; then
+        echo "${SCRIPT_NAME}::Naming convention error: could not extract JIRA ticket code from source branch ref '${GITHUB_REF_NAME}'" >>"${GITHUB_STEP_SUMMARY}"
+    fi
+}
+
+function main() {
+    # Parse command-line arguments
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+        -h | --help)
+            usage
+            exit 0
+            ;;
+        --)
+            shift
+            break
+            ;;
+        *)
+            echo "Invalid option: $1"
+            usage
+            exit 1
+            ;;
+        esac
+        shift
+    done
+
+    local IS_LEGACY=${1:-"false"}
+
+    if [ -z "${IS_LEGACY}" ]; then
+        echo "${SCRIPT_NAME}::IS_LEGACY flag can not be empty" >>"$GITHUB_STEP_SUMMARY"
+        exit 1
+    fi
+
+    # Manual case uses image static tag
+    if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+        getJiraCodeFromBranch
+        ENVIRONMENT_OUTPUT=$([ "${IS_LEGACY}" = "true" ] && echo "development" || echo "test")
+    elif [ "${GITHUB_REF_TYPE}" = "tag" ] && [ ${GITHUB_EVENT_NAME} = "release" ]; then
+        if [[ $(echo "${GITHUB_REF_NAME}" | grep -P '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$') ]]; then
+            # SemVer with suffix (1.0.0-alpha.1)
+            # if [ "${IS_LEGACY}" = "true" ]; then ENVIRONMENT_OUTPUT="notprod"; else ENVIRONMENT_OUTPUT="release"; fi
+            ENVIRONMENT_OUTPUT=$([ "${IS_LEGACY}" = "true" ] && echo "notprod" || echo "release")
+        elif [[ $(echo "${GITHUB_REF_NAME}" | grep -P '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$') ]]; then
+            # SemVer without suffix (1.0.0)
+            ENVIRONMENT_OUTPUT=prod
+        else
+            echo "::error title=Set context::Tag format error: your git tag does not respect Semantic Versioning, see https://regex101.com/r/vkijKf/1/"
+            echo "::error title=Set context::Could not set Env with ref_type '${GITHUB_REF_TYPE}' and ref_name '${GITHUB_REF_NAME}'"
+            exit 1
+        fi
+    elif [ "${GITHUB_REF_TYPE}" = "branch" ] && [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+        getJiraCodeFromBranch
+        ENVIRONMENT_OUTPUT=$([ "${IS_LEGACY}" = "true" ] && echo "development" || echo "test")
+    else
+        echo "::error title=Set context::Not implemented case with event '${GITHUB_EVENT_NAME}' and ref_type '${GITHUB_REF_TYPE}'"
+        exit 1
+    fi
+
+    echo "ENVIRONMENT=${ENVIRONMENT_OUTPUT}" >>"${GITHUB_OUTPUT}"
+    echo "JIRA_CODE=${JIRA_CODE}" >>"${GITHUB_OUTPUT}"
+
+}
+
+# Call main function
+main "$@"
