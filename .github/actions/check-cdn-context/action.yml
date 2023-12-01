@@ -1,10 +1,9 @@
 name: Check context (CDN)
 description: Check context (CDN)
 inputs:
-  IS_LEGACY:
-    required: false
-    description: 'Is legacy service'
-    default: 'false'
+  ENVIRONMENT:
+    description: 'ENVIRONMENT/environment to deploy to'
+    required: true
 
 outputs:
   ENVIRONMENT:
@@ -16,6 +15,9 @@ outputs:
   SHA_SHORT:
     description: 'Define SHA_SHORT from input or current git commit SHA'
     value: ${{ steps.git-sha.outputs.SHA_SHORT }}
+  TAG_NAME:
+    description: 'Define TAG_NAME from JIRA_CODE or current git release tag'
+    value: ${{ steps.check-context.outputs.TAG_NAME }}
 
 runs:
   using: 'composite'
@@ -40,4 +42,4 @@ runs:
       shell: bash
       id: check-context
       run: |
-        ${{ github.action_path }}/check-context.sh -- "${{ inputs.IS_LEGACY }}"
+        ${{ github.action_path }}/check-context.sh "${{ inputs.ENVIRONMENT }}"

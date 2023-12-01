@@ -4,19 +4,6 @@ set -euo pipefail
 
 # Define variables
 readonly SCRIPT_NAME=$(basename "${0}")
-readonly SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-
-# Define functions
-function usage() {
-    cat <<EOF
-Usage: ${SCRIPT_NAME} [OPTIONS] [IS_LEGACY]
-
-    IS_LEGACY       Flag to set legacy or not legacy environment (true or false)
-
-OPTIONS:
-    -h, --help      Show this help message and exit
-EOF
-}
 
 # Extract JIRA code from branch name
 function getJiraCodeFromBranch {
@@ -34,7 +21,7 @@ function getJiraCodeFromBranch {
 
     # Check JIRA ticket code format and clean up if not compliant
     if [ ! -z "${JIRA_CODE}" ]; then
-        JIRA_CODE=$(echo "${JIRA_CODE}" | grep -P -o '^[A-Z]{2,}-[0-9]+')
+        JIRA_CODE=$(echo "${JIRA_CODE}" | grep -P -o '^[A-Z]{2,}-[0-9]+' || echo "")
         # echo "::notice title=Set context::JIRA_CODE output value is '${JIRA_CODE}'"
     fi
 
@@ -44,42 +31,30 @@ function getJiraCodeFromBranch {
 }
 
 function main() {
-    # Parse command-line arguments
-    while [[ $# -gt 0 ]]; do
-        case "$1" in
-        -h | --help)
-            usage
-            exit 0
-            ;;
-        --)
-            shift
-            break
-            ;;
-        *)
-            echo "Invalid option: $1"
-            usage
-            exit 1
-            ;;
-        esac
-        shift
-    done
 
-    local IS_LEGACY=${1:-"false"}
-
-    if [ -z "${IS_LEGACY}" ]; then
-        echo "${SCRIPT_NAME}::IS_LEGACY flag can not be empty" >>"$GITHUB_STEP_SUMMARY"
-        exit 1
-    fi
+    local ENVIRONMENT=${1:-"test"}
+    local JIRA_CODE=""
+    local TAG_NAME=""
 
     # Manual case uses image static tag
     if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
         getJiraCodeFromBranch
-        ENVIRONMENT_OUTPUT=$([ "${IS_LEGACY}" = "true" ] && echo "development" || echo "test")
+        TAG_NAME=${JIRA_CODE}
+        # use short SHA for sandbox if JIRA code is not set
+        if [ "${ENVIRONMENT}" = 'sandbox' ] && [ -z "${IMAGE_TAG}" ]; then
+            TAG_NAME=$(echo "${GITHUB_SHA}" | cut -c1-7)
+        fi
+        # Check if environment is test or sandbox before using it
+        if [ "${ENVIRONMENT}" != "test" ] && [ "${ENVIRONMENT}" != "sandbox" ]; then
+            echo "::error title=Set context::Invalid environment: '${ENVIRONMENT}'. Only 'test' and 'sandbox' environments are allowed for ${GITHUB_EVENT_NAME} events."
+            exit 1
+        fi
+        ENVIRONMENT_OUTPUT="$ENVIRONMENT"
     elif [ "${GITHUB_REF_TYPE}" = "tag" ] && [ ${GITHUB_EVENT_NAME} = "release" ]; then
+        TAG_NAME=${GITHUB_REF_NAME}
         if [[ $(echo "${GITHUB_REF_NAME}" | grep -P '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$') ]]; then
             # SemVer with suffix (1.0.0-alpha.1)
-            # if [ "${IS_LEGACY}" = "true" ]; then ENVIRONMENT_OUTPUT="notprod"; else ENVIRONMENT_OUTPUT="release"; fi
-            ENVIRONMENT_OUTPUT=$([ "${IS_LEGACY}" = "true" ] && echo "notprod" || echo "release")
+            ENVIRONMENT_OUTPUT="release"
         elif [[ $(echo "${GITHUB_REF_NAME}" | grep -P '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$') ]]; then
             # SemVer without suffix (1.0.0)
             ENVIRONMENT_OUTPUT=prod
@@ -90,7 +65,7 @@ function main() {
         fi
     elif [ "${GITHUB_REF_TYPE}" = "branch" ] && [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
         getJiraCodeFromBranch
-        ENVIRONMENT_OUTPUT=$([ "${IS_LEGACY}" = "true" ] && echo "development" || echo "test")
+        ENVIRONMENT_OUTPUT="test"
     else
         echo "::error title=Set context::Not implemented case with event '${GITHUB_EVENT_NAME}' and ref_type '${GITHUB_REF_TYPE}'"
         exit 1
@@ -98,6 +73,7 @@ function main() {
 
     echo "ENVIRONMENT=${ENVIRONMENT_OUTPUT}" >>"${GITHUB_OUTPUT}"
     echo "JIRA_CODE=${JIRA_CODE}" >>"${GITHUB_OUTPUT}"
+    echo "TAG_NAME=${TAG_NAME}" >>"${GITHUB_OUTPUT}"
 
 }
 

@@ -49,10 +49,10 @@ runs:
 
     - shell: bash
       run: |
-        if [ -e ${{ inputs.ENVIRONMENT }}.env ]; then
-          echo "- :white_check_mark: Env file \`${{inputs.ENVIRONMENT}}.env\` used for build" >> $GITHUB_STEP_SUMMARY
+        if [ -e .env.${{ inputs.ENVIRONMENT }} ]; then
+          echo "- :white_check_mark: Env file \`.env.${{inputs.ENVIRONMENT}}\` used for build" >> $GITHUB_STEP_SUMMARY
         else
-          echo "- :x: Env file \`${{inputs.ENVIRONMENT}}.env\` not found for build to ${{ inputs.ENVIRONMENT }} environment" >> $GITHUB_STEP_SUMMARY
+          echo "- :x: Env file \`.env.${{inputs.ENVIRONMENT}}\` not found for build to ${{ inputs.ENVIRONMENT }} environment" >> $GITHUB_STEP_SUMMARY
           exit 1
         fi
         echo "" >> $GITHUB_STEP_SUMMARY
@@ -61,7 +61,7 @@ runs:
       id: import-env
       uses: falti/dotenv-action@v1.0.4
       with:
-        path: '${{ inputs.ENVIRONMENT }}.env'
+        path: '.env.${{ inputs.ENVIRONMENT }}'
         export-variables: true
         keys-case: 'bypass'
 

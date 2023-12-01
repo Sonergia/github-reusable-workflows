@@ -4,8 +4,9 @@ on:
     inputs:
       AWS_DEFAULT_REGION:
         description: 'AWS region to deploy to'
-        required: true
+        required: false
         type: string
+        default: eu-west-3
       BUILD_DIRECTORY:
         description: 'Directory target for build'
         required: false
@@ -15,11 +16,6 @@ on:
         description: 'Environment to deploy to'
         required: true
         type: string
-      IS_LEGACY:
-        description: 'Is legacy project'
-        required: true
-        type: string
-        default: 'false'
       NOTIFICATIONS_JIRA:
         description: 'Send notifications to JIRA'
         required: false
@@ -58,6 +54,7 @@ on:
 jobs:
   prerequisites:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       COMMIT_MESSAGE: ${{ steps.git-commit.outputs.COMMIT_MESSAGE }}
       DATADOG_URL: ${{ steps.output-datadog-url.outputs.DATADOG_URL }}
@@ -66,6 +63,9 @@ jobs:
       NOTIFICATIONS_JIRA: ${{ steps.set-var-default.outputs.NOTIFICATIONS_JIRA }}
       NOTIFICATIONS_TEAMS: ${{ steps.set-var-default.outputs.NOTIFICATIONS_TEAMS }}
       SHA_SHORT: ${{ steps.check-context.outputs.SHA_SHORT }}
+      TAG_NAME: ${{ steps.check-context.outputs.TAG_NAME }}
+    env:
+      ENVIRONMENT: ${{ inputs.ENVIRONMENT }}
     steps:
       - uses: actions/checkout@v3
 
@@ -83,7 +83,7 @@ jobs:
       - id: check-context
         uses: Sonergia/github-reusable-workflows/.github/actions/check-cdn-context@2.x
         with:
-          IS_LEGACY: ${{ inputs.IS_LEGACY}}
+          ENVIRONMENT: ${{ inputs.ENVIRONMENT }}
 
       - name: Git output commit message
         id: git-commit
@@ -97,7 +97,7 @@ jobs:
           echo "DATADOG_URL=https://app.datadoghq.eu/logs?query=env%3A${{ steps.check-context.outputs.ENVIRONMENT}}%20namespace%3A${{ inputs.SERVICE_NAMESPACE }}%20service_name%3A${{ inputs.SERVICE_NAME }}%20&cols=env%2Cnamespace%2Cservice%2Cversion%2Csha_short%2Csource%2C%40cloudfront.edge-location%2C%40http.method%2C%40http.status_code%2C%40http.url_details.path%2C%40s3.operation&index=%2A&messageDisplay=inline&refresh_mode=sliding&saved-view-id=96755&stream_sort=desc&viz=stream&from_ts=1698901003645&to_ts=1698915403645&live=true" >> ${GITHUB_OUTPUT}
 
       - id: notify-workflow-start
-        if: always() && inputs.NOTIFICATIONS_TEAMS == 'true'
+        if: always() && steps.set-var-default.outputs.NOTIFICATIONS_TEAMS == 'true'
         uses: Sonergia/github-reusable-workflows/.github/actions/ms-teams-notification@2.x
         with:
           MS_TEAMS_WEBHOOK_URI: ${{ secrets.MS_TEAMS_WEBHOOK_URI }}
@@ -116,10 +116,6 @@ jobs:
         if: always()
         run: |
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Inputs | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "| --- | --- |" >> $GITHUB_STEP_SUMMARY
-          echo "| IS_LEGACY | \`${{ inputs.IS_LEGACY }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Outputs | Status |" >> $GITHUB_STEP_SUMMARY
           echo "| --- | --- |" >> $GITHUB_STEP_SUMMARY
           echo "| COMMIT_MESSAGE | \`${{ steps.git-commit.outputs.COMMIT_MESSAGE }}\` |" >> $GITHUB_STEP_SUMMARY
@@ -129,17 +125,20 @@ jobs:
           echo "| NOTIFICATIONS_JIRA | \`${{ steps.set-var-default.outputs.NOTIFICATIONS_JIRA }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| NOTIFICATIONS_TEAMS | \`${{ steps.set-var-default.outputs.NOTIFICATIONS_TEAMS }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| SHA_SHORT | \`${{ steps.check-context.outputs.SHA_SHORT }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| TAG_NAME | \`${{ steps.check-context.outputs.TAG_NAME }}\` |" >> $GITHUB_STEP_SUMMARY
 
   build-assets:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs:
+      - prerequisites
+    strategy:
+      matrix:
+        node-version: [18.x]
     outputs:
       ARTIFACT_NAME: ${{ steps.build-node-app.outputs.ARTIFACT_NAME }}
       ARCHIVE_FILENAME: ${{ steps.build-node-app.outputs.ARCHIVE_FILENAME }}
       BUILD_DIRECTORY: ${{ steps.build-node-app.outputs.BUILD_DIRECTORY }}
-    strategy:
-      matrix:
-        node-version: [18.x]
-    needs: prerequisites
     steps:
       - uses: actions/checkout@v3
 
@@ -153,9 +152,10 @@ jobs:
 
   # Terraform part
   deploy-cdn:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs:
       - prerequisites
-    runs-on: ubuntu-latest
     outputs:
       ROLE_NAME_TO_ASSUME: ${{ steps.deploy-cdn.outputs.role_name_to_assume }}
       BUCKET_NAME: ${{ steps.deploy-cdn.outputs.bucket_name }}
@@ -175,7 +175,7 @@ jobs:
           SERVICE_NAME: ${{ inputs.SERVICE_NAME }}
           SERVICE_NAMESPACE: ${{ inputs.SERVICE_NAMESPACE }}
           TF_WORKING_DIRECTORY: ${{ inputs.TF_WORKING_DIRECTORY }}
-          TAG_NAME: ${{ needs.prerequisites.outputs.JIRA_CODE }}
+          TAG_NAME: ${{ needs.prerequisites.outputs.TAG_NAME }}
           SHA_SHORT: ${{ needs.prerequisites.outputs.SHA_SHORT }}
           ENVIRONMENT: ${{ needs.prerequisites.outputs.ENVIRONMENT }}
 
@@ -190,6 +190,7 @@ jobs:
 
   upload-files:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs:
       - build-assets
       - deploy-cdn
@@ -226,6 +227,7 @@ jobs:
 
   feedback:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs:
       - prerequisites
       - build-assets
@@ -235,6 +237,7 @@ jobs:
     steps:
       - name: Deploy status
         id: output-deploy-status
+        if: always()
         run: |
           if [ "${{ contains(needs.*.result, 'failure') }}" == 'true' ]; then
             DEPLOY_STATUS="❌ failure erreur de CICD, appelle un DevOps !"
