@@ -34,7 +34,7 @@ function getJiraCodeFromBranch {
 
     # Check JIRA ticket code format and clean up if not compliant
     if [ ! -z "${JIRA_CODE}" ]; then
-        JIRA_CODE=$(echo "${JIRA_CODE}" | grep -P -o '^[A-Z]{2,}-[0-9]+')
+        JIRA_CODE=$(echo "${JIRA_CODE}" | grep -P -o '^[A-Z]{2,}-[0-9]+' || echo "")
         # echo "::notice title=Set context::JIRA_CODE output value is '${JIRA_CODE}'"
     fi
 
@@ -74,7 +74,21 @@ function main() {
     # Manual case uses image static tag
     if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
         getJiraCodeFromBranch
-        ENVIRONMENT_OUTPUT=$([ "${IS_LEGACY}" = "true" ] && echo "development" || echo "test")
+        IMAGE_TAG=${JIRA_CODE}
+        # use short SHA for sandbox if JIRA code is not set
+        if [ "${ENVIRONMENT}" = 'sandbox' ] && [ -z "${IMAGE_TAG}" ]; then
+            IMAGE_TAG=$(echo "${GITHUB_SHA}" | cut -c1-7)
+        fi
+        if [ "${IS_LEGACY}" = "true" ]; then
+            ENVIRONMENT_OUTPUT="development"
+        else
+            # Check if environment is test or sandbox before using it
+            if [ "${ENVIRONMENT}" != "test" ] && [ "${ENVIRONMENT}" != "sandbox" ]; then
+                echo "::error title=Set context::Invalid environment: '${ENVIRONMENT}'. Only 'test' and 'sandbox' environments are allowed for ${GITHUB_EVENT_NAME} events."
+                exit 1
+            fi
+            ENVIRONMENT_OUTPUT="$ENVIRONMENT"
+        fi
     elif [ "${GITHUB_REF_TYPE}" = "tag" ] && [ ${GITHUB_EVENT_NAME} = "release" ]; then
         if [[ $(echo "${GITHUB_REF_NAME}" | grep -P '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$') ]]; then
             # SemVer with suffix (1.0.0-alpha.1)
