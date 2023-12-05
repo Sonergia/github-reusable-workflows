@@ -1,4 +1,4 @@
-name: terraform deploy service workflow
+name: ♻️ Terraform deploy service workflow
 
 on:
   workflow_call:

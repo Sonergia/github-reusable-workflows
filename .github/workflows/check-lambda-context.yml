@@ -1,4 +1,4 @@
-name: Check lambda context (git...)
+name: ♻️ Check lambda context (git...)
 
 on:
   workflow_call:

@@ -1,4 +1,4 @@
-name: build docker workflow
+name: ♻️ Build docker workflow
 
 on:
   workflow_call:

@@ -1,4 +1,4 @@
-name: Merge tag or branch into master
+name: ♻️ Merge tag or branch into master
 run-name: ${{ github.actor }} merge $${{ github.ref_name }} into master
 
 on:

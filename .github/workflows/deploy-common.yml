@@ -1,4 +1,4 @@
-name: terraform deploy common workflow
+name: ♻️ Terraform deploy common workflow
 
 on:
   workflow_call:

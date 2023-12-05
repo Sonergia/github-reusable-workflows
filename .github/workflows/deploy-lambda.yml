@@ -1,4 +1,4 @@
-name: terraform deploy lambda workflow
+name: ♻️ Terraform deploy lambda workflow
 
 on:
   workflow_call:

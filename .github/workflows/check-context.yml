@@ -1,4 +1,4 @@
-name: Check context (ECR, git...)
+name: ♻️ Check context (ECR, git...)
 
 on:
   workflow_call:
