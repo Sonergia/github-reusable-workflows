@@ -58,7 +58,7 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v1
 
       - name: Check build artifact exists
-        uses: xSAVIKx/artifact-exists-action@v0
+        uses: xSAVIKx/artifact-exists-action@v0.6
         id: check-build-artifact
         with:
           name: build-artifact
