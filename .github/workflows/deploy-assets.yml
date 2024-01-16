@@ -8,7 +8,7 @@ on:
         type: string
         default: eu-west-3
       BUILD_DIRECTORY:
-        description: 'Directory target for build'
+        description: 'Application build directory'
         required: false
         type: string
         default: build
@@ -16,6 +16,11 @@ on:
         description: 'Environment to deploy to'
         required: true
         type: string
+      NODE_VERSION_MATRIX:
+        description: 'Node version matrix in JSON format'
+        required: false
+        type: string
+        default: '["18.x"]'
       NOTIFICATIONS_JIRA:
         description: 'Send notifications to JIRA'
         required: false
@@ -134,7 +139,7 @@ jobs:
       - prerequisites
     strategy:
       matrix:
-        node-version: [18.x]
+        node-version: ${{ fromJSON(inputs.NODE_VERSION_MATRIX)}}
     outputs:
       ARTIFACT_NAME: ${{ steps.build-node-app.outputs.ARTIFACT_NAME }}
       ARCHIVE_FILENAME: ${{ steps.build-node-app.outputs.ARCHIVE_FILENAME }}
