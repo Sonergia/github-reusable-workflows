@@ -84,7 +84,7 @@ function getJiraCodeFromBranch {
         echo "::notice title=Set context::JIRA_CODE output value is '${JIRA_CODE}'"
     fi
 
-    if [ -z "${JIRA_CODE}" ] && [ "${ENVIRONMENT}" != sandbox ]; then
+    if [ -z "${JIRA_CODE}" ] && [ "${ENVIRONMENT}" != "sandbox" ]; then
         echo "::warning title=Set context::Naming convention error: could not extract JIRA ticket code from source branch ref '${GITHUB_REF_NAME}'"
     fi
 }
@@ -117,7 +117,7 @@ if [ ${GITHUB_EVENT_NAME} = "workflow_dispatch" ]; then
     getJiraCodeFromBranch
     IMAGE_TAG=${JIRA_CODE}
     # use short SHA for sandbox if JIRA code is not set
-    if [ "${ENVIRONMENT}" = 'sandbox' ] && [ -z "${IMAGE_TAG}" ]; then
+    if [ "${ENVIRONMENT}" = "sandbox" ] && [ -z "${IMAGE_TAG}" ]; then
         IMAGE_TAG=$(echo "${GITHUB_SHA}" | cut -c1-7)
     fi
     if [ "${IS_LEGACY}" = "true" ]; then
