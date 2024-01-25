@@ -41,7 +41,7 @@ function main() {
         getJiraCodeFromBranch
         TAG_NAME=${JIRA_CODE}
         # use short SHA for sandbox if JIRA code is not set
-        if [ "${ENVIRONMENT}" = 'sandbox' ]; then
+        if [ "${ENVIRONMENT}" = "sandbox" ]; then
             TAG_NAME=$(echo "${GITHUB_SHA}" | cut -c1-7)
         fi
         # Check if environment is test or sandbox before using it
