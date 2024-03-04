@@ -1,0 +1,42 @@
+name: Get Jira Code from Branch
+description: A composite action to get Jira code from a branch using a bash script
+
+inputs:
+  BRANCH:
+    description: 'The name of the branch'
+    required: true
+
+outputs:
+  JIRA_CODE:
+    description: 'The Jira code extracted from the branch name'
+    value: ${{ steps.get-jira-code.outputs.JIRA_CODE }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Get Jira code
+      id: get-jira-code
+      shell: bash
+      run: |
+        JIRA_CODE=""
+        # Check if source branch is project or epic
+        if [[ "${{ inputs.BRANCH }}" =~ ^(project|epic)/.*/master$ ]]; then
+            # Extract JIRA codes from branch pattern (ex: project/MAESTRO-1186/master)
+            JIRA_CODE=$(echo "${{ inputs.BRANCH }}" | awk 'BEGIN { FS = "/" } ; { print $2 }')
+        elif [[ "${{ inputs.BRANCH }}" =~ ^(project|epic)/.*$ ]]; then
+            # Extract JIRA codes from branch pattern (ex: project/MAESTRO-1186/feature/MAESTRO-1151)
+            JIRA_CODE=$(echo "${{ inputs.BRANCH }}" | awk 'BEGIN { FS = "/" } ; { print $4 }')
+        else
+            # Extract JIRA codes from branch pattern (ex: feature/MAESTRO-1280, or tech/DEVOPS-160_refactoring)
+            JIRA_CODE=$(echo "${{ inputs.BRANCH }}" | awk 'BEGIN { FS = "/" } ; { print $2 }')
+        fi
+        
+        echo JIRA_CODE=$(echo ${JIRA_CODE} | grep -P -o '^[A-Z]{2,}-[0-9]+' || echo "") >> $GITHUB_OUTPUT
+
+    - name: Output Jira code
+      shell: bash
+      run: |
+        echo "Jira code: ${{ steps.get-jira-code.outputs.JIRA_CODE }}"

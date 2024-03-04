@@ -1,0 +1,93 @@
+name: Terraform Version Requirements Step
+description: 'Apply requirements step'
+
+inputs:
+  AWS_ACCESS_KEY_ID_TF:
+    description: 'AWS access key'
+    required: true
+  AWS_SECRET_ACCESS_KEY_TF:
+    description: 'AWS secret key'
+    required: true
+  TF_DIR:
+    description: 'Terraform directory'
+    required: true
+  TF_VERSION:
+    description: 'Terraform version'
+    required: false
+    default: 1.3.x
+  
+outputs:
+  DB_SOURCE_NAME:
+    description: 'Database to restore from'
+    value: ${{ steps.get_outputs.outputs.DB_SOURCE_NAME }}
+  DB_TARGET_NAME:
+    description: 'Created database name'
+    value: ${{ steps.get_outputs.outputs.DB_TARGET_NAME }}
+  TF_DB_ACTIONS:
+    description: 'Terraform database actions'
+    value: ${{ steps.terraform-plan.outputs.TF_DB_ACTIONS }}
+
+runs:
+  using: 'composite'
+  steps:
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ inputs.AWS_ACCESS_KEY_ID_TF }}
+        aws-secret-access-key: ${{ inputs.AWS_SECRET_ACCESS_KEY_TF }}
+        aws-region: eu-west-3
+
+    - name: Set up Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ inputs.TF_VERSION }}
+
+    - name: Terraform init
+      shell: bash
+      run: |
+        terraform -chdir=${{ inputs.TF_DIR }} init \
+          -upgrade \
+          -reconfigure
+
+    - name: Terraform validate
+      shell: bash
+      run: terraform -chdir=${{ inputs.TF_DIR }} validate -no-color
+
+    - name: Terraform plan
+      shell: bash
+      id: terraform-plan
+      run: |
+        terraform -chdir=${{ inputs.TF_DIR }} plan \
+          -input=false \
+          -var current_step=requirements \
+          -out "tfplan"
+        terraform -chdir=${{ inputs.TF_DIR }} show -json "tfplan" | jq > tfplan.json
+        TF_DB_ACTIONS=$(jq -c 'if .resource_changes != null then .resource_changes[] | select( .type == "mysql_database") | .change.actions else [] end' tfplan.json)
+        if [ -z "$TF_DB_ACTIONS" ]; then
+          TF_DB_ACTIONS="[]"
+        fi
+        echo TF_DB_ACTIONS="$TF_DB_ACTIONS" >> $GITHUB_OUTPUT
+
+    # useful for debugging
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: tfplan
+        path: ${{ inputs.TF_DIR }}/tfplan
+
+    - name: Terraform apply
+      shell: bash
+      run: |
+        terraform -chdir=${{ inputs.TF_DIR }} apply tfplan
+
+    # get original & created database names from terraform output
+    - name: Outputs & summary
+      shell: bash
+      id: get_outputs
+      run: |
+        OUTPUT=$(terraform -chdir=${{ inputs.TF_DIR }} output -json | jq -r '.json.value | fromjson')
+        DB_SOURCE_NAME=$(echo $OUTPUT | jq -r '.original_db_name')
+        DB_TARGET_NAME=$(echo $OUTPUT | jq -r '.created_db.name')
+        echo DB_SOURCE_NAME=$DB_SOURCE_NAME >> $GITHUB_OUTPUT
+        echo DB_TARGET_NAME=$DB_TARGET_NAME >> $GITHUB_OUTPUT

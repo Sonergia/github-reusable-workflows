@@ -1,0 +1,247 @@
+name: Deploy legacy service
+run-name: Deploy legacy service ${{ inputs.SERVICE_NAME }} -> ${{ inputs.EC2_ENVIRONMENT }} ${{ inputs.SERVICE_VERSION_NAME }}
+
+on:
+  workflow_call:
+    inputs:
+      RUNNER_ENVIRONMENT:
+        description: 'Runner environment'
+        type: string
+        required: true
+      EC2_ENVIRONMENT:
+        description: 'EC2 environment'
+        type: string
+        required: true
+      SERVICE_NAME:
+        description: 'Service name'
+        type: string
+        required: true
+      SERVICE_VERSION_NAME:
+        description: 'Service version name'
+        type: string
+        required: true
+      SERVICE_VERSION_REF:
+        description: 'Service version ref'
+        type: string
+        required: true
+      NOTIFICATIONS_TEAMS:
+        description: 'Notifications Teams'
+        type: string
+        required: true
+      TF_VERSION:
+        description: 'Terraform version'
+        type: string
+        required: false
+        default: '1.3.x'
+    secrets:
+      GH_TF_SSH_KEY:
+        required: true
+      MS_TEAMS_WEBHOOK_URI_CHANNEL_DEPLOY:
+        required: true
+      # only for DB restore
+      MS_TEAMS_WEBHOOK_URI_CHANNEL_DATABASES:
+        required: true
+      AWS_ACCESS_KEY_ID_TF:
+        required: true
+      AWS_SECRET_ACCESS_KEY_TF:
+        required: true
+      # only for DB restore
+      COMPOSER_AUTH:
+        required: true
+    outputs:
+      JIRA_CODE: 
+        description: 'Jira code'
+        value: ${{ jobs.prerequisites.outputs.JIRA_CODE }}
+      PUBLIC_URL:
+        description: 'Public URL' 
+        value: ${{ jobs.bootstrap.outputs.PUBLIC_URL }}
+      PRIVATE_URL:
+        description: 'Public URL' 
+        value: ${{ jobs.bootstrap.outputs.PRIVATE_URL }}
+      DATADOG_URL:
+        description: 'Datadog URL' 
+        value: ${{ jobs.prerequisites.outputs.DATADOG_URL }}
+
+env:
+  GIT_SSH_COMMAND: "echo '${{ secrets.GH_TF_SSH_KEY }}' > id_rsa
+    && ssh-keyscan github.com > known_hosts
+    && chmod 600 id_rsa known_hosts
+    && ssh -i ./id_rsa -o UserKnownHostsFile=./known_hosts"
+  TF_CLI_ARGS_init: -backend-config="key=ec2/webapps/${{ inputs.SERVICE_NAME }}/${{inputs.EC2_ENVIRONMENT}}/version/${{ inputs.SERVICE_VERSION_NAME }}/terraform.tfstate"
+  # same as -input=false in CLI
+  TF_INPUT: false
+  TF_IN_AUTOMATION: true
+  # TF_VAR_
+  TF_VAR_allow_access: 'internal'
+  TF_VAR_environment: ${{ inputs.EC2_ENVIRONMENT }}
+  TF_VAR_runs_on: ${{ inputs.RUNNER_ENVIRONMENT }}
+  TF_VAR_service_version_name: ${{ inputs.SERVICE_VERSION_NAME }}
+  TF_VAR_service_version_ref: ${{ inputs.SERVICE_VERSION_REF }}
+
+jobs:
+  prerequisites:
+    runs-on: ubuntu-latest
+    outputs:
+      COMMIT_MESSAGE: ${{ steps.git-commit.outputs.COMMIT_MESSAGE }}
+      DATADOG_URL: ${{ steps.build-datadog-url.outputs.DATADOG_URL }}
+      JIRA_CODE: ${{ steps.get-jira-code-from-branch.outputs.JIRA_CODE }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ssh-key: ${{ secrets.GH_TF_SSH_KEY }}
+          # TODO: remove this when we'll be in real repo, not forked
+          repository: ${{ github.repository }}
+          # see https://github.com/actions/checkout?tab=readme-ov-file#checkout-pull-request-head-commit-instead-of-merge-commit
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Git output commit message
+        id: git-commit
+        run: |
+          COMMIT_MESSAGE=$(git log -1 --pretty=format:"%s") && echo "COMMIT_MESSAGE=${COMMIT_MESSAGE}" >> ${GITHUB_OUTPUT}
+          
+      - name: Get Jira code from branch
+        id: get-jira-code-from-branch
+        uses: sonergia/github-reusable-workflows/.github/actions/get-jira-code-from-branch@2.x
+        with:
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+
+      - name: Build datadog URL
+        id: build-datadog-url
+        run: echo "DATADOG_URL=https://app.datadoghq.eu/logs?query=env:${{ inputs.EC2_ENVIRONMENT }}%20service:${{ inputs.SERVICE_NAME }}%20%40http.servername%3A${{ inputs.SERVICE_NAME }}.${{ inputs.SERVICE_VERSION_NAME }}.ec2&saved-view-id=81085" >> $GITHUB_OUTPUT
+
+  notify-start-deploy:
+    runs-on: ubuntu-latest
+    needs: prerequisites
+    if: always() && inputs.NOTIFICATIONS_TEAMS == 'true'
+    steps:
+      - name: Notify teams channel
+        if: always() && inputs.NOTIFICATIONS_TEAMS == 'true'
+        uses: sonergia/github-reusable-workflows/.github/actions/ms-teams-notification@2.x
+        with:
+          MS_TEAMS_WEBHOOK_URI: ${{ secrets.MS_TEAMS_WEBHOOK_URI_CHANNEL_DEPLOY }}
+          ENVIRONMENT: ${{ inputs.EC2_ENVIRONMENT }}
+          SUMMARY: Déploiement service ${{ inputs.SERVICE_NAME }} -> ${{ inputs.EC2_ENVIRONMENT }} ${{ inputs.SERVICE_VERSION_NAME }} en cours...
+          COLOR: 999999
+          COMMIT_MESSAGE: ${{ needs.prerequisites.outputs.COMMIT_MESSAGE }}
+          JIRA_CODE: ${{ needs.prerequisites.outputs.JIRA_CODE }}
+          FACT_STATUS: ⏱ in progress...
+          FACT_TYPE_NAME: Service legacy
+          FACT_TYPE_VALUE: '${{ inputs.SERVICE_NAME }} ${{ inputs.SERVICE_VERSION_NAME }}'
+          ACTION_DATADOG_URL: ${{ needs.prerequisites.outputs.DATADOG_URL }}
+  
+  requirements:
+    runs-on: [self-hosted, "${{ inputs.RUNNER_ENVIRONMENT }}"]
+    needs: prerequisites
+    outputs:
+      TF_DB_ACTIONS: ${{ steps.requirements.outputs.TF_DB_ACTIONS }}
+      DB_SOURCE_NAME: ${{ steps.requirements.outputs.DB_SOURCE_NAME }}
+      DB_TARGET_NAME: ${{ steps.requirements.outputs.DB_TARGET_NAME }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Requirements
+        id: requirements
+        uses: sonergia/github-reusable-workflows/.github/actions/terraform-version-requirements@2.x
+        with:
+          TF_DIR: '.terraform/version'
+          TF_VERSION: ${{ inputs.TF_VERSION }}
+          AWS_ACCESS_KEY_ID_TF: ${{ secrets.AWS_ACCESS_KEY_ID_TF }}
+          AWS_SECRET_ACCESS_KEY_TF: ${{ secrets.AWS_SECRET_ACCESS_KEY_TF }}
+
+  database-restore:
+    needs: requirements
+    if: contains(fromJson(needs.requirements.outputs.TF_DB_ACTIONS), 'create')
+    uses: sonergia/databases-scripts/.github/workflows/mysql-restore.yml@2.x
+    with:
+      ENVIRONMENT: ${{ inputs.RUNNER_ENVIRONMENT }}
+      DB_SOURCE_NAME: ${{ needs.requirements.outputs.DB_SOURCE_NAME }}
+      DB_TARGET_HOST: sonergia-staging-vpce.${{ inputs.RUNNER_ENVIRONMENT }}.rds
+      DB_TARGET_PORT: 3316
+      DB_TARGET_NAME: ${{ needs.requirements.outputs.DB_TARGET_NAME }}
+      AWS_SECRET_MANAGER_ID: legacy/sonergia/staging/rds/master
+    secrets:
+      COMPOSER_AUTH: ${{ secrets.COMPOSER_AUTH }}
+      AWS_ACCESS_KEY_ID_TF: ${{ secrets.AWS_ACCESS_KEY_ID_TF }}
+      AWS_SECRET_ACCESS_KEY_TF: ${{ secrets.AWS_SECRET_ACCESS_KEY_TF }}
+      MS_TEAMS_WEBHOOK_URI: ${{ secrets.MS_TEAMS_WEBHOOK_URI_CHANNEL_DATABASES }}
+      GH_SSH_KEY: ${{ secrets.GH_TF_SSH_KEY }}
+
+  provision:
+    needs: requirements
+    runs-on: [self-hosted, "${{ inputs.RUNNER_ENVIRONMENT }}"]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Provision
+        uses: sonergia/github-reusable-workflows/.github/actions/terraform-version-provisioning@2.x
+        with:
+          TF_DIR: '.terraform/version'
+          TF_VERSION: ${{ inputs.TF_VERSION }}
+          AWS_ACCESS_KEY_ID_TF: ${{ secrets.AWS_ACCESS_KEY_ID_TF }}
+          AWS_SECRET_ACCESS_KEY_TF: ${{ secrets.AWS_SECRET_ACCESS_KEY_TF }}
+
+  bootstrap:
+    needs: [provision, database-restore]
+    if: always() && contains(fromJson('["success", "skipped"]'), needs.database-restore.result) && contains(fromJson('["success"]'), needs.provision.result)
+    runs-on: [self-hosted, "${{ inputs.RUNNER_ENVIRONMENT }}"]
+    outputs:
+      PUBLIC_URL: ${{ steps.bootstrapping.outputs.PUBLIC_URL }}
+      PRIVATE_URL: ${{ steps.bootstrapping.outputs.PRIVATE_URL }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Bootstrap
+        id: bootstrapping
+        uses: sonergia/github-reusable-workflows/.github/actions/terraform-version-bootstrapping@2.x
+        with:
+          TF_DIR: '.terraform/version'
+          TF_VERSION: ${{ inputs.TF_VERSION }}
+          AWS_ACCESS_KEY_ID_TF: ${{ secrets.AWS_ACCESS_KEY_ID_TF }}
+          AWS_SECRET_ACCESS_KEY_TF: ${{ secrets.AWS_SECRET_ACCESS_KEY_TF }}
+      
+  notify-end-deploy:
+    needs: [prerequisites, provision, bootstrap]
+    runs-on: [self-hosted, "${{ inputs.RUNNER_ENVIRONMENT }}"]
+    if: always() && inputs.NOTIFICATIONS_TEAMS == 'true'
+    steps:
+      - name: Deploy status
+        id: output-deploy-status
+        if: always()
+        run: |
+          if [ "${{ contains(needs.*.result, 'failure') }}" == 'true' ]; then
+            DEPLOY_STATUS="❌ failure erreur de CICD, appelle un DevOps !"
+            DEPLOY_COLOR=cb2431
+            GITHUB_DEPLOYMENT_STATUS=failure
+          elif [ "${{ contains(needs.*.result, 'cancelled') }}" == 'true' ]; then
+            DEPLOY_STATUS="❗cancelled"
+            DEPLOY_COLOR=ffc107
+            GITHUB_DEPLOYMENT_STATUS=cancelled
+          else
+            DEPLOY_STATUS="✅ success"
+            DEPLOY_COLOR=2cbe4e
+            GITHUB_DEPLOYMENT_STATUS=success
+          fi
+          echo "DEPLOY_STATUS=${DEPLOY_STATUS}" >> ${GITHUB_OUTPUT}
+          echo "DEPLOY_COLOR=${DEPLOY_COLOR}" >> ${GITHUB_OUTPUT}
+          echo "GITHUB_DEPLOYMENT_STATUS=${GITHUB_DEPLOYMENT_STATUS}" >> ${GITHUB_OUTPUT}
+      
+      - name: Notify teams channel
+        if: always() && inputs.NOTIFICATIONS_TEAMS == 'true'
+        uses: sonergia/github-reusable-workflows/.github/actions/ms-teams-notification@2.x
+        with:
+          MS_TEAMS_WEBHOOK_URI: ${{ secrets.MS_TEAMS_WEBHOOK_URI_CHANNEL_DEPLOY }}
+          ENVIRONMENT: ${{ inputs.EC2_ENVIRONMENT }}
+          SUMMARY: Déploiement service ${{ inputs.SERVICE_NAME }} -> ${{ inputs.EC2_ENVIRONMENT }} ${{ inputs.SERVICE_VERSION_NAME }} terminé
+          COLOR: ${{ steps.output-deploy-status.outputs.DEPLOY_COLOR }}
+          COMMIT_MESSAGE: ${{ needs.prerequisites.outputs.COMMIT_MESSAGE }}
+          JIRA_CODE: ${{ needs.prerequisites.outputs.JIRA_CODE }}
+          FACT_STATUS: ${{ steps.output-deploy-status.outputs.DEPLOY_STATUS}}
+          FACT_TYPE_NAME: Service legacy
+          FACT_TYPE_VALUE: '${{ inputs.SERVICE_NAME }} ${{ inputs.SERVICE_VERSION_NAME }}'
+          ACTION_PUBLIC_URL: '${{ needs.bootstrap.outputs.PUBLIC_URL }}'
+          ACTION_PRIVATE_URL: '${{ needs.bootstrap.outputs.PRIVATE_URL }}'
+          ACTION_DATADOG_URL: ${{ needs.prerequisites.outputs.DATADOG_URL }}
