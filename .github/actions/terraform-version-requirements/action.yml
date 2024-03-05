@@ -69,13 +69,6 @@ runs:
         fi
         echo TF_DB_ACTIONS="$TF_DB_ACTIONS" >> $GITHUB_OUTPUT
 
-    # useful for debugging
-    - uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: tfplan
-        path: ${{ inputs.TF_DIR }}/tfplan
-
     - name: Terraform apply
       shell: bash
       run: |
