@@ -1,0 +1,25 @@
+name: check-image-ecr
+description: Check if an image exists in an ECR repository
+
+inputs:
+  SERVICE_NAMESPACE:
+    description: 'Service namespace'
+    required: true
+  IMAGE_NAMES:
+    description: 'Image names'
+    required: true
+  IMAGE_SHA:
+    description: 'Image SHA'
+    required: true
+outputs:
+  IMAGE_EXISTS:
+    description: "Result or status of image existence"
+    value: ${{ steps.check-image-ecr.outputs.IMAGE_EXISTS }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Check if image exists in ECR
+      id: check-image-ecr
+      shell: bash
+      run: ${{ github.action_path }}/check-image-ecr.sh ${{ inputs.SERVICE_NAMESPACE }} "${{ join(fromJson(inputs.IMAGE_NAMES), ' ') }}" ${{ inputs.IMAGE_SHA }}

@@ -94,11 +94,11 @@ jobs:
 
       - name: Set context from git and inputs
         id: set-context
-        run: |
-          ENVIRONMENT="${{ inputs.ENVIRONMENT }}"
-          IS_LAMBDA="true"
-          IS_LEGACY="${{ inputs.IS_LEGACY }}"
-          ./.github/scripts/set-context.sh "${ENVIRONMENT}" "${IS_LAMBDA}" "${IS_LEGACY}"
+        uses: sonergia/github-reusable-workflows/.github/actions/set-context@2.x
+        with:
+          ENVIRONMENT: "${{ inputs.ENVIRONMENT }}"
+          IS_LAMBDA: "TRUE"
+          IS_LEGACY: "${{ inputs.IS_LEGACY }}"
 
       # Notify at the start of workflow
       - name: Notify teams channel

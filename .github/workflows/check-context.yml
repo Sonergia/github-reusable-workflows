@@ -127,15 +127,19 @@ jobs:
       - name: Check if image SHA tag and release tag already exists in ECR, add release tag otherwise
         id: check-image-ecr
         if: inputs.IMAGE_NAMES != '[]'
-        run: ./.github/scripts/check-image-ecr.sh ${{ inputs.SERVICE_NAMESPACE }} "${{ join(fromJson(inputs.IMAGE_NAMES), ' ') }}" ${{ steps.git-sha.outputs.IMAGE_SHA }}
+        uses: sonergia/github-reusable-workflows/.github/actions/check-image-ecr@2.x
+        with:
+          SERVICE_NAMESPACE: ${{ inputs.SERVICE_NAMESPACE }}
+          IMAGE_NAMES: ${{ inputs.IMAGE_NAMES }}
+          IMAGE_SHA: ${{ steps.git-sha.outputs.IMAGE_SHA }}
 
       - name: Set context from git and inputs
         id: set-context
-        run: |
-          ENVIRONMENT="${{ inputs.CLUSTER }}"
-          IS_LAMBDA="false"
-          IS_LEGACY="false"
-          ./.github/scripts/set-context.sh "${ENVIRONMENT}" "${IS_LAMBDA}" "${IS_LEGACY}"
+        uses: sonergia/github-reusable-workflows/.github/actions/set-context@2.x
+        with:
+          ENVIRONMENT: "${{ inputs.CLUSTER }}"
+          IS_LAMBDA: "false"
+          IS_LEGACY: "false"
 
       # Notify at the start of workflow
       - name: Notify teams channel

@@ -3,26 +3,26 @@ description: Execute an arbitrary command in a running container on ECS Fargate 
 
 inputs:
   AWS_ACCESS_KEY_ID_TF:
+    description: 'AWS_ACCESS_KEY_ID_TF'
     required: true
-    type: string
   AWS_SECRET_ACCESS_KEY_TF:
+    description: 'AWS_SECRET_ACCESS_KEY_TF'
     required: true
-    type: string
   AWS_DEFAULT_REGION:
+    description: 'AWS_DEFAULT_REGION'
     required: true
-    type: string
   CLUSTER:
+    description: 'CLUSTER'
     required: true
-    type: string
   SERVICE:
+    description: 'SERVICE'
     required: true
-    type: string
   CONTAINER:
+    description: 'CONTAINER'
     required: true
-    type: string
   COMMAND:
+    description: 'COMMAND'
     required: true
-    type: string
 
 # Map the workflow outputs to job outputs
 # outputs:
@@ -58,13 +58,6 @@ runs:
         ref: '2.x'
         # ref: 'delivery' # Only when testing ############## /!\ ##############
 
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v3
-      with:
-        aws-access-key-id: ${{ inputs.AWS_ACCESS_KEY_ID_TF }}
-        aws-secret-access-key: ${{ inputs.AWS_SECRET_ACCESS_KEY_TF }}
-        aws-region: ${{ inputs.AWS_DEFAULT_REGION }}
-
     - name: ECS exec command
       id: ecs-exec-command
       shell: bash
@@ -74,7 +67,7 @@ runs:
         CONTAINER=${{ inputs.CONTAINER }}
         COMMAND="${{ inputs.COMMAND }}"
 
-        ./.github/scripts/ecs-exec-cmd.sh "${CLUSTER}" "${SERVICE}" "${CONTAINER}" "${COMMAND}"
+        ${{ github.action_path }}/ecs-exec-cmd.sh "${CLUSTER}" "${SERVICE}" "${CONTAINER}" "${COMMAND}"
 
   # outputs:
   #   COMMAND_RESULT: ${{ steps.ecs-exec-command.COMMAND_RESULT }}

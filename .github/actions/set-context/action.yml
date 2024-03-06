@@ -1,0 +1,42 @@
+name: set-context
+description: Set the context
+
+inputs:
+  ENVIRONMENT:
+    description: 'Environment'
+    required: true
+  IS_LAMBDA:
+    description: 'Is Lambda'
+    required: true
+  IS_LEGACY:
+    description: 'Is Legacy'
+    required: true
+outputs:
+  CLUSTER:
+    description: "Cluster"
+    value: ${{ steps.set-context.outputs.CLUSTER }}
+  ENVIRONMENT:
+    description: "Environment"
+    value: ${{ steps.set-context.outputs.ENVIRONMENT }}
+  IMAGE_TAG:
+    description: "Image tag"
+    value: ${{ steps.set-context.outputs.IMAGE_TAG }}
+  JIRA_CODE:
+    description: "Jira code"
+    value: ${{ steps.set-context.outputs.JIRA_CODE }}
+  CREATE_TAG_LATEST:
+    description: "Create tag latest"
+    value: ${{ steps.set-context.outputs.CREATE_TAG_LATEST }}
+  
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set context
+      id: set-context
+      shell: bash
+      run: |
+        ENVIRONMENT="${{ inputs.ENVIRONMENT }}"
+          IS_LAMBDA="${{ inputs.IS_LAMBDA }}"
+          IS_LEGACY="${{ inputs.IS_LEGACY}}"
+          ${{ github.action_path }}/set-context.sh "${ENVIRONMENT}" "${IS_LAMBDA}" "${IS_LEGACY}"

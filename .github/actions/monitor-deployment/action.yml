@@ -1,0 +1,22 @@
+name: Monitor deployment
+description: Monitor the deployment of a service
+
+inputs:
+  CLUSTER:
+    description: 'CLUSTER'
+    required: true
+  SERVICE:
+    description: 'SERVICE'
+    required: true
+outputs:
+  DEPLOY_STATUS:
+    description: "Result or status of deployment"
+    value: ${{ steps.monitor-deployment.outputs.DEPLOY_STATUS }}
+
+runs:
+  using: composite
+  steps:
+    - name: Monitor deployment
+      id: monitor-deployment
+      shell: bash
+      run: ${{ github.action_path }}/monitor-deployment.sh ${{ inputs.AWS_ACCESS_KEY_ID_TF }} ${{ inputs.AWS_SECRET_ACCESS_KEY_TF }} ${{ inputs.AWS_DEFAULT_REGION }} ${{ inputs.CLUSTER }} ${{ inputs.SERVICE }} ${{ inputs.CONTAINER }} ${{ inputs.COMMAND }}

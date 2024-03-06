@@ -292,7 +292,10 @@ jobs:
       - name: Monitor deployment
         id: monitor-deployment
         # if: steps.tf-apply-service.conclusion != 'failure'
-        run: ./.github/scripts/monitor-deployment.sh ${{ inputs.CLUSTER }} ${{ matrix.service }}
+        uses: sonergia/github-reusable-workflows/.github/actions/monitor-deployment@2.x
+        with:
+          CLUSTER: ${{ inputs.CLUSTER }}
+          SERVICE: ${{ matrix.service }}
 
       #--------------------------------------------------------
 
