@@ -1,0 +1,53 @@
+name: "Search inheritance"
+description: "Recherche des forks et enfants"
+inputs:
+  REPO_NAME:
+    description: "Le nom du repository"
+    required: true
+  ACCESS_TOKEN:
+    description: "A token passed from the caller workflow"
+    required: true
+# Map the workflow outputs to job outputs
+outputs:
+  ALL:
+    description: "Les forks et les children"
+    value: ${{ steps.merge.outputs.REPO_LIST }}
+
+runs:
+  using: "composite"
+  steps:
+    - id: get-children
+      name: Get children
+      shell: bash
+      run: |
+        CHILDREN=$(gh search repos "topic:${{ inputs.REPO_NAME }}" \
+          --owner Sonergia \
+          --jq '.[].name | @json' \
+          --json name | tr '\n' ' '
+        )
+        echo "CHILDREN=${CHILDREN}" >> ${GITHUB_OUTPUT}
+      env:
+        GITHUB_TOKEN: ${{ inputs.ACCESS_TOKEN }}
+
+    - id: get-forks
+      name: Get forks
+      shell: bash
+      run: |
+        FORKS=$(gh api -H 'Accept: application/vnd.github+json' \
+          repos/Sonergia/${{ inputs.REPO_NAME }}/forks \
+          --jq '.[].name | @json' | tr '\n' ' '
+        )
+        echo "FORKS=${FORKS}" >> ${GITHUB_OUTPUT}
+      env:
+        GITHUB_TOKEN: ${{ inputs.ACCESS_TOKEN }}
+
+    - id: merge
+      shell: bash
+      run: |
+        UNION="${{ steps.get-children.outputs.CHILDREN }} ${{ steps.get-forks.outputs.FORKS}}"
+        REPO_LIST='[]'
+        for ENTRY in $UNION; do
+            echo "${ENTRY}"
+            REPO_LIST=$(echo $REPO_LIST | jq -c ". += [ \"${ENTRY}\" ]")
+        done
+        echo "REPO_LIST=${REPO_LIST}" >> ${GITHUB_OUTPUT}

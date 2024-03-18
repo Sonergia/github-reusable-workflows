@@ -1,0 +1,43 @@
+name: Search parent
+description: Recherche du parent (fork / template)
+
+inputs:
+  REPO_NAME:
+    description: "Le nom du repository"
+    required: true
+  ACCESS_TOKEN:
+    description: "A token passed from the caller workflow"
+    required: true
+# Map the workflow outputs to job outputs
+outputs:
+  PARENT:
+    description: "Le nom du dépôt parent (fork / template)"
+    value: ${{ steps.get-parent.outputs.PARENT }}
+
+runs:
+  using: composite
+  steps:
+    - id: get-parent
+      shell: bash
+      # si le dépôt est un fork (.fork) : .parent.name
+      # sinon le premier des .topics qui commencent par "repository-template"
+      # à défaut, null
+      run: |
+        PARENT=$(
+          gh api repos/Sonergia/${{ inputs.REPO_NAME }} \
+            -H "Accept: application/vnd.github+json" \
+            --jq '
+              if .fork then
+                .parent.name
+              else
+                .topics | map(
+                  select(
+                    startswith("repository-template")
+                  )
+                ) | first
+              end
+            '
+        )
+        echo "PARENT=${PARENT}" >> ${GITHUB_OUTPUT}
+      env:
+        GITHUB_TOKEN: ${{ inputs.ACCESS_TOKEN }}
