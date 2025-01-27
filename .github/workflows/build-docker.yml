@@ -66,7 +66,7 @@ jobs:
           name: build-artifact
 
       - name: Download build artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v3
         if: steps.check-build-artifact.outputs.exists == 'true'
         with:
           name: build-artifact
