@@ -59,20 +59,20 @@ jobs:
         with:
           mask-password: true
 
-      - name: Check build artifact exists
-        uses: xSAVIKx/artifact-exists-action@v0.6
-        id: check-build-artifact
-        with:
-          name: build-artifact
+      # - name: Check build artifact exists
+      #   uses: xSAVIKx/artifact-exists-action@v0.6
+      #   id: check-build-artifact
+      #   with:
+      #     name: build-artifact
 
       - name: Download build artifact
         uses: actions/download-artifact@v4
-        if: steps.check-build-artifact.outputs.exists == 'true'
+        # if: steps.check-build-artifact.outputs.exists == 'true'
         with:
           name: build-artifact
 
       - name: Untar and delete build archive
-        if: steps.check-build-artifact.outputs.exists == 'true'
+        # if: steps.check-build-artifact.outputs.exists == 'true'
         run: tar -xvf build.tar && rm build.tar
 
       - name: Docker meta

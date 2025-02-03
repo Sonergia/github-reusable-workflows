@@ -28,7 +28,8 @@ SERVICE_DEPLOYMENT_IN_PROGRESS=$(echo "${DESCRIBE_SERVICE}" | jq ".services[].de
     | select(.status == \"PRIMARY\") | select(.rolloutState == \"IN_PROGRESS\")")
 
 while [ ! -z "${SERVICE_DEPLOYMENT_IN_PROGRESS}" ]; do
-    # echo "------------------- LOOP -------------------------"
+
+    echo "------------------- LOOP -------------------------"
 
     DESCRIBE_SERVICE=$(aws ecs describe-services --cluster ${CLUSTER} --services ${SERVICE})
     SERVICE_DEPLOYMENT_IN_PROGRESS=$(echo "${DESCRIBE_SERVICE}" | jq ".services[].deployments[] \
@@ -41,7 +42,7 @@ while [ ! -z "${SERVICE_DEPLOYMENT_IN_PROGRESS}" ]; do
         echo "::notice title=Monitor deployment::${SERVICE}: ${INITIAL_ROLLOUT_STATE_REASON}"
     fi
 
-    # echo "::debug title=Monitor deployment::FAILED_TASKS_COUNT=${FAILED_TASKS_COUNT}"
+    echo "::notice title=Monitor deployment::FAILED_TASKS_COUNT=${FAILED_TASKS_COUNT}"
 
     if [ ! -z ${FAILED_TASKS_COUNT} ] && [ ${FAILED_TASKS_COUNT} -gt 0 ]; then
         echo "::error title=Monitor deployment::${SERVICE}: Houston we have a problem! ${FAILED_TASKS_COUNT} task(s) failed to start! Max fails is set to ${MAX_FAILED_TASKS_COUNT}!"
