@@ -60,7 +60,7 @@ jobs:
           mask-password: true
 
       - name: Check build artifact exists
-        uses: xSAVIKx/artifact-exists-action@v0.6
+        uses: softwareforgood/check-artifact-v4-existence@v0
         id: check-build-artifact
         with:
           name: build-artifact
