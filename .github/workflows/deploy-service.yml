@@ -77,7 +77,7 @@ jobs:
   tf-service:
     name: Tf '${{ matrix.service }}' on cluster '${{ inputs.CLUSTER }}'
     runs-on: [self-hosted, "${{ inputs.CLUSTER }}"]
-    timeout-minutes: 15
+    timeout-minutes: 30
 
     # For deployment-action and checkout
     permissions:
